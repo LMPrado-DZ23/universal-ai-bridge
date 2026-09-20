@@ -1,3 +1,15 @@
+# Revisão sobre 0.7.0 — sem nova release
+
+- Execução assíncrona com cotas, timeout, truncamento por bytes e cleanup de sessão.
+- Limites de jobs, PTYs, watchers, stdin, confirmações e concorrência HTTP.
+- Worker com timeout para regex/busca/documentos; limites de expansão ZIP e paginação.
+- Confirmação vinculada ao conteúdo completo de projetos e documentos; modo human_local.
+- Schema de política, flags estritas e formato de token de 32 bytes.
+- Audit sanitizado, privado, com retenção; persistência de token verificável e revogação persistente.
+- Cloudflared fixado com checksum/editor; credencial fora de argv; parada por identidade.
+- CI Ubuntu/Windows/macOS e verificação de fontes UTF-8/controles.
+- Testes e documentação de limites reais. Sem nova tag/release.
+
 # Changelog
 
 ## 0.7.0 — Fase 2: executor sem shell (program + args)

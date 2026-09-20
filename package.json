@@ -14,7 +14,10 @@
     "dev:http": "tsx watch src/index.ts --transport http",
     "dev:stdio": "tsx src/index.ts --transport stdio",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:source": "node scripts/check-source.mjs",
+    "pretest": "npm run build",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
@@ -32,10 +35,11 @@
     "@types/pdfkit": "^0.17.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.2.0-beta.15"

@@ -104,3 +104,19 @@ mapeie o hostname para `http://127.0.0.1:8787`, e defina no `.env`
   painel mostra o endpoint atual (botão **Copiar endpoint**).
 - O bridge roda com os **privilégios do usuário logado** (não SYSTEM). No modo
   admin isso significa acesso amplo aos arquivos/contas desse usuário.
+
+
+## Estado da revisão local
+
+Não há novo EXE/release publicado. Assinatura do instalador depende de certificado;
+sem `CODE_SIGN_PFX_BASE64` ele é **não assinado**. Não foi homologado neste ambiente
+Linux: instalação limpa, atualização, rollback, logon, GUI, ACL, parada e desinstalação
+precisam passar no Windows antes da distribuição.
+
+`ensure-cloudflared.ps1` fixa 2025.8.1, checksum oficial e editor Cloudflare. Falta de
+assinatura válida é erro bloqueante, mesmo se o hash corresponder. Nenhum fallback
+para latest. O launcher usa arquivo privado de credencial, e stop-access valida a
+identidade registrada antes de taskkill. O painel inclui aprovação humana local.
+Scripts usam ExecutionPolicy Bypass nos atalhos legados: isso ignora a política de
+execução do PowerShell; só execute scripts de origem verificada. Assinatura dos
+scripts e atualização/rollback verificáveis permanecem pendentes.

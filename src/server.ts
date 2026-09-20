@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Config } from "./config.js";
+import { DEFAULT_LIMITS, type ResourceLimits, type Config } from "./config.js";
 import { PolicyEngine } from "./policy/engine.js";
 import { ConfirmStore } from "./confirm.js";
 import { Audit } from "./audit/log.js";
@@ -15,17 +15,18 @@ import { registerTools } from "./tools/index.js";
  */
 export class SessionResources {
   private disposed = false;
+  readonly abort = new AbortController();
   readonly jobs: JobManager;
   readonly watcher: Watcher;
   readonly pty: PtyManager;
   readonly confirm: ConfirmStore;
-  readonly sessionEnv: Record<string, string> = {};
+  readonly sessionEnv: Record<string, string> = Object.create(null);
 
-  constructor(maxBufferBytes: number) {
-    this.jobs = new JobManager(maxBufferBytes);
-    this.watcher = new Watcher();
-    this.pty = new PtyManager(maxBufferBytes);
-    this.confirm = new ConfirmStore();
+  constructor(maxBufferBytes: number, limits: ResourceLimits = DEFAULT_LIMITS) {
+    this.jobs = new JobManager(maxBufferBytes, limits);
+    this.watcher = new Watcher(limits.watchers);
+    this.pty = new PtyManager(maxBufferBytes, limits);
+    this.confirm = new ConfirmStore(limits.confirmations, limits.confirmationTtlMs);
   }
 
   get isDisposed(): boolean {
@@ -35,6 +36,7 @@ export class SessionResources {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.abort.abort();
     try { this.jobs.destroy(); } catch { /* ignore */ }
     try { this.pty.destroy(); } catch { /* ignore */ }
     try { this.watcher.destroy(); } catch { /* ignore */ }
@@ -46,17 +48,19 @@ export class SessionResources {
 /** Fábrica: monta um McpServer novo + os recursos da sessão. */
 export function buildServer(config: Config): { server: McpServer; resources: SessionResources } {
   const server = new McpServer({ name: "universal-ai-bridge", version: "0.7.0" });
-  const resources = new SessionResources(config.policy.shell.maxOutputBytes);
+  const resources = new SessionResources(config.policy.shell.maxOutputBytes, config.limits);
 
   registerTools(server, {
     config,
-    policy: new PolicyEngine(config.policy),
+    policy: new PolicyEngine(structuredClone(config.policy)),
     confirm: resources.confirm,
-    audit: new Audit(config.auditDir),
+    audit: new Audit(config.auditDir, config.auditRequired),
     jobs: resources.jobs,
     watcher: resources.watcher,
     pty: resources.pty,
     sessionEnv: resources.sessionEnv,
+    isDisposed: () => resources.isDisposed,
+    signal: resources.abort.signal,
   });
 
   return { server, resources };

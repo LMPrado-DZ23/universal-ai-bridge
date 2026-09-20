@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { spawnSync } from "node:child_process";
 import { killTree } from "../jobs.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";
 
@@ -25,9 +24,7 @@ export function registerProcessTools(server: McpServer, ctx: Ctx): void {
     },
     async ({ filter, max }) => {
       try {
-        const r = IS_WIN
-          ? spawnSync("tasklist", ["/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true })
-          : spawnSync("ps", ["-eo", "pid,comm"], { encoding: "utf8" });
+        const r = await ctx.jobs.run(IS_WIN ? 'tasklist' : 'ps', IS_WIN ? ['/fo','csv','/nh'] : ['-eo','pid,comm'], ctx.config.workspace, {}, 5000);
         if (r.status !== 0) return fail(`Falha ao listar processos: ${r.stderr || r.status}`);
 
         const rows: { pid: string; name: string }[] = [];

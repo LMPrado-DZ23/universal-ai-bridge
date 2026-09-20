@@ -144,7 +144,10 @@ export class PolicyEngine {
     const b = bin.trim().toLowerCase();
     if (!/^[a-z0-9._-]+$/.test(b)) return { ok: false, reason: "Nome de binário inválido." };
     if (this.policy.shell.deny.includes(b)) return { ok: false, reason: `"${b}" está na denylist e não pode ser liberado.` };
-    if (!this.policy.shell.allow.includes(b)) this.policy.shell.allow.push(b);
+    if (!this.policy.shell.allow.includes(b)) {
+      if(this.policy.shell.allow.length>=256)return {ok:false,reason:"Limite de allowlist atingido."};
+      this.policy.shell.allow.push(b);
+    }
     return { ok: true };
   }
 

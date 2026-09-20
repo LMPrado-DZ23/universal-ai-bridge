@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 const distEntry = resolve(__dirname, "..", "dist", "index.js");
 const PORT = 8940 + Math.floor(Math.random() * 9);
 const ADMIN_PORT = PORT + 1;
-const TOKEN = "phase2-token-0123456789abcdef";
+const TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const ADMIN_SECRET = "admin-secret-0123456789abcdef";
 const BASE = `http://127.0.0.1:${PORT}`;
 const ADMIN = `http://127.0.0.1:${ADMIN_PORT}`;

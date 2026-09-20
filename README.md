@@ -307,17 +307,11 @@ offset/limit/tail), `read_multiple_files`, `get_file_info`, `read_media_file`,
 
 ### Comparação com o Desktop Commander
 
-O Desktop Commander é excelente, mas só fala **stdio** (clientes locais). O
-Universal AI Bridge cobre o mesmo terreno de arquivos/terminal **e** vai além:
-
-| | Universal AI Bridge | Desktop Commander |
-|---|---|---|
-| IAs no navegador (ChatGPT/Claude.ai) | ✅ MCP remoto + túnel | ❌ só stdio |
-| Modos safe/admin + policy + audit + aprovação local | ✅ | parcial |
-| Instalador 1-clique (Windows) | ✅ | ❌ |
-| Arquivos (ler parcial, multi, info, editar regex) | ✅ | ✅ |
-| Busca por nome e conteúdo (grep) | ✅ | ✅ |
-| Jobs longos/interativos/cancel + processos | ✅ | ✅ |
+O Desktop Commander também oferece controle remoto por MCP, documentos,
+preview, streaming, sessões, histórico, Docker e opções de instalação.
+Referência: https://github.com/wonderwhy-er/DesktopCommanderMCP .
+Não há evidência nesta auditoria para declarar superioridade ou paridade completa.
+O foco verificado do Bridge é controle explícito de política, sessões, aprovação e audit.
 
 Fluxo de uso detalhado em [`SKILL.md`](./SKILL.md). Política em
 [`config/policy.json`](./config/policy.json).
@@ -327,3 +321,92 @@ Fluxo de uso detalhado em [`SKILL.md`](./SKILL.md). Política em
 ## Licença
 
 MIT — veja [`LICENSE`](./LICENSE).
+
+
+## Revisão local de segurança sobre v0.7.0
+
+Esta revisão ainda não foi publicada. Veja `AUDIT.md` para evidências e lacunas.
+
+- `run_command` aguarda um processo assíncrono, sem bloquear `/health`; informa exit code, timeout e truncamento. Usa as mesmas cotas de `run_job` e termina no encerramento da sessão.
+- `program + args` evita interpretação por shell para executáveis nativos. `.cmd/.bat` precisa de `cmd.exe` no Windows com validação restrita. Allowlist e `shell:false` são guardrails, não isolamento de programas autorizados.
+- Tokens manuais precisam ter formato de 32 bytes: 64 caracteres hexadecimais ou 43 base64url. O formato não prova entropia: gere com `randomBytes(32)`; não escolha texto previsível. Tokens antigos curtos exigem migração manual.
+- Flags booleanas aceitam somente `true`/`false`. Configuração inválida bloqueia a inicialização; política é validada por schema.
+
+### Aprovação e operação local
+
+`confirm` é confirmação lógica no canal da IA. `local` ainda exige que o humano
+entregue um código à IA. `human_local` exige decisão no painel Windows: configure
+`BRIDGE_APPROVAL=human_local`, abra o painel e escolha **Aprovar / Recusar ações**.
+A IA recebe um identificador, mas só pode executar os mesmos argumentos após a
+aprovação local. Ações grandes que não cabem no preview são recusadas. A GUI
+precisa de validação em Windows real. Este modo depende do plano administrativo
+HTTP; não o configure em stdio. Programas já autorizados rodam com seus privilégios:
+nenhuma aprovação torna execução arbitrária sob o mesmo usuário uma sandbox.
+
+Rotacionar pelo painel retorna `persistence=persisted`, `memory-only` ou `failed`.
+Em falha, o token novo vale apenas em memória; corrija a escrita/ACL antes de reiniciar.
+Revogação também tenta persistir token vazio; se falhar, reinício pode restaurar o
+valor antigo. A UI/API informa a persistência. Arquivos privados usam 0600 no POSIX
+e ACL explícita para o usuário no Windows; erro de ACL bloqueia a escrita privada.
+O `.env` deve ter precedência operacional: um BRIDGE_TOKEN herdado no ambiente do
+serviço pode sobrepor o arquivo no próximo boot e deve ser atualizado/removido.
+
+### Limites padrão
+
+| Recurso | Limite |
+|---|---:|
+| Jobs ativos por sessão / global | 4 / 32 |
+| Jobs retidos por sessão / TTL após terminar | 32 / 5 minutos |
+| PTYs retidos por sessão / TTL após terminar | 4 / 5 minutos |
+| Watchers por sessão | 8 |
+| Confirmações pendentes / TTL | 64 / 5 minutos |
+| Escrita stdin ou PTY | 65.536 bytes |
+| Requests HTTP concorrentes por sessão | 4 |
+| Saída retida por manager de jobs / PTYs | 4 MB cada |
+| Documentos de entrada / expansão ZIP | 2 MB / 16 MB |
+| Planilha: linhas / colunas / células totais | 10.000 / 100 / 100.000 |
+| Texto extraído / PDF | 200.000 caracteres / 200 páginas |
+| Parsing / regex e busca | 10 s / 5 s |
+| Workers globais | 4; heap V8 128 MB por worker |
+| Busca | 20.000 entradas, 20 MB, 200.000 linhas |
+| Ler múltiplos / criar projeto | 32 / 64 arquivos; teto agregado da política |
+| Audit | rotação ~1 MB, até 8 arquivos, 7 dias |
+
+Os limites de recursos são configuráveis com `BRIDGE_LIMIT_ACTIVE_JOBS`,
+`GLOBAL_JOBS`, `RETAINED_JOBS`, `PTYS`, `WATCHERS`, `CONFIRMATIONS`, `STDIN_BYTES`,
+`JOB_TTL_MS`, `CONFIRMATION_TTL_MS`, `CONCURRENT_REQUESTS`, `OUTPUT_BYTES` (todos
+com prefixo `BRIDGE_LIMIT_`). Cada valor aceita de 1 a quatro vezes seu padrão.
+O heap V8 não limita toda memória nativa: use limites do SO/VM para isolamento real.
+ExcelJS ainda carrega o arquivo limitado no worker; somente a página é materializada
+como linhas de resposta. Arquivos maiores devem ser divididos externamente.
+`BRIDGE_AUDIT_REQUIRED=true` bloqueia ações protegidas pelo gate quando não consegue
+gravar a intenção antes da execução; audit registra hashes e tamanhos, sem conteúdo.
+
+### Instalação e diagnóstico desta revisão
+
+1. Instale Node.js 22.12+ (ou Node 24) e extraia o código revisado numa pasta nova.
+2. Abra o terminal nessa pasta e rode `npm ci`, `npm run build`, `npm test`.
+3. Copie `env.example` para `.env`, configure seu workspace e gere um token:
+   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+4. Mantenha `BRIDGE_MODE=safe`. Inicie com `npm run start:http`.
+5. Em outro terminal na mesma pasta, rode `npm run doctor` para testar autenticação,
+   inicialização MCP e listagem real de ferramentas. Ele fecha a sessão criada.
+6. Clientes MCP locais: use a configuração stdio da seção 4. Para clientes remotos,
+   configure endpoint HTTPS `/mcp` e autenticação Bearer se o cliente suportar esse
+   método. A compatibilidade com a conta/interface atual de ChatGPT ou Claude.ai
+   precisa de teste real; a presença de HTTP sozinho não comprova essa integração.
+
+O túnel rápido tem URL efêmera; o nomeado depende da sua conta/domínio Cloudflare.
+No launcher, credencial nomeada fica em `tunnel.token` com ACL, passada por
+`--token-file`, nunca por `--token <segredo>`. O token dá acesso ao túnel e não deve
+ser compartilhado. Binário fixado em 2025.8.1, SHA256 e assinatura/editor são exigidos
+inclusive para executável existente. Se o binário oficial estiver sem assinatura
+válida, a instalação falha; não há downgrade de segurança nem fallback latest.
+Referência: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/run-parameters/ .
+
+Parada valida PID, caminho, linha de comando e data de criação registrados. Estado
+antigo sem identidade não é suficiente para encerrar processos. Isso reduz risco
+de PID reutilizado, mas não é uma operação atômica do kernel. `ExecutionPolicy Bypass`
+nos atalhos existentes permite executar scripts sem a política local; não equivale
+a assinatura ou verificação criptográfica. O instalador continua sem assinatura
+quando não há certificado configurado. Não considere esta revisão release homologada.

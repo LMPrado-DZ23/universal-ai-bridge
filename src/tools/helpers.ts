@@ -16,6 +16,8 @@ export interface Ctx {
   pty: PtyManager;
   /** Variáveis de ambiente por sessão, aplicadas a run_command/run_job. */
   sessionEnv: Record<string, string>;
+  isDisposed?: () => boolean;
+  signal?: AbortSignal;
 }
 
 export const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
@@ -40,6 +42,17 @@ export function gate(
   coreArgs: Record<string, unknown>,
   confirmToken: string | undefined
 ): GateResult {
+  if (ctx.isDisposed?.()) return {proceed:false,result:fail("Sessão encerrada.")};
+  if (ctx.config.auditRequired) ctx.audit.record({tool,decision:"allow",args:coreArgs});
+  if (ctx.config.approval === 'human_local') {
+    if(confirmToken && ctx.confirm.consumeHuman(confirmToken,tool,coreArgs)) {
+      ctx.audit.record({tool,decision:'allow',args:{humanDecision:true}});
+      return {proceed:true};
+    }
+    const id=ctx.confirm.issueHuman(tool,coreArgs);
+    ctx.audit.record({tool,decision:'confirm-required',args:{humanDecision:true}});
+    return {proceed:false,result:ok(`Aguardando decisão no painel LOCAL de aprovações. request_id=${id}. Após aprovação humana, repita exatamente os argumentos com confirm_token="${id}". Esse identificador sozinho não autoriza a ação.`)};
+  }
   if (ctx.config.approval === "auto") return { proceed: true };
 
   if (!confirmToken) {

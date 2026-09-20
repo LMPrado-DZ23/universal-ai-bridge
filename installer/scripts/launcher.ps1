@@ -7,6 +7,7 @@ param(
   [switch]$NoTunnel
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "private-state.ps1")
 
 $envFile = Join-Path $DataDir ".env"
 if (-not (Test-Path $envFile)) { throw "Config nao encontrada: $envFile (rode configure.ps1)." }
@@ -32,6 +33,14 @@ try {
   if ($h.ok) { $bridgeUp = $true }
 } catch {}
 
+if ($bridgeUp) {
+  $saved=Join-Path $DataDir 'state.json'
+  if (Test-Path $saved) {
+    $previous=Get-Content $saved -Raw | ConvertFrom-Json
+    if(Test-BridgeIdentity $previous.nodeIdentity) { Write-Output 'Bridge ja ativo; estado e processos preservados.'; exit 0 }
+  }
+  throw 'Porta ocupada por processo nao identificado. Nenhum processo iniciado.'
+}
 $nodePid = $null
 if (-not $bridgeUp) {
   $env:BRIDGE_ENV_FILE = $envFile
@@ -39,7 +48,13 @@ if (-not $bridgeUp) {
   $p = Start-Process -FilePath $node -ArgumentList @("`"$entry`"", "--transport", "http") `
     -WindowStyle Hidden -PassThru
   $nodePid = $p.Id
-  Start-Sleep -Seconds 2
+  $ready=$false
+  for($attempt=0;$attempt -lt 30;$attempt++) {
+    if($p.HasExited){throw 'Bridge encerrou durante inicializacao.'}
+    try {if((Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 1).ok){$ready=$true;break}}catch{}
+    Start-Sleep -Milliseconds 200
+  }
+  if(-not $ready){throw 'Bridge nao passou no healthcheck.'}
 }
 
 $endpoint = ""
@@ -50,8 +65,12 @@ if (-not $NoTunnel) {
   if (Test-Path $cf) {
     if ($tunnelToken) {
       # Túnel NOMEADO: URL fixa configurada na sua conta Cloudflare.
+      $tokenFile=Join-Path $DataDir 'tunnel.token'
+      if(-not (Test-Path $tokenFile)){New-Item -ItemType File -Path $tokenFile | Out-Null}
+      Set-BridgePrivate $tokenFile
+      [System.IO.File]::WriteAllText($tokenFile,$tunnelToken,(New-Object System.Text.UTF8Encoding($false)))
       $tp = Start-Process -FilePath $cf `
-        -ArgumentList @("tunnel", "run", "--token", $tunnelToken) `
+        -ArgumentList @("tunnel", "--no-autoupdate", "run", "--token-file", "`"$tokenFile`"") `
         -WindowStyle Hidden -PassThru
       $tunnelPid = $tp.Id
       if ($tunnelHostname) {
@@ -84,9 +103,14 @@ $state = [ordered]@{
   bridgeUp   = $true
   endpoint   = $endpoint
   tunnelHost = $tunnelHost
+  nodeIdentity = if($nodePid){Get-BridgeIdentity $nodePid}else{$null}
+  tunnelIdentity = if($tunnelPid){Get-BridgeIdentity $tunnelPid}else{$null}
   nodePid    = $nodePid
   tunnelPid  = $tunnelPid
   updatedAt  = (Get-Date).ToString("o")
 }
-$state | ConvertTo-Json | Set-Content -Path (Join-Path $DataDir "state.json") -Encoding UTF8
+$stateFile=Join-Path $DataDir 'state.json'
+if(-not (Test-Path $stateFile)){New-Item -ItemType File -Path $stateFile | Out-Null}
+Set-BridgePrivate $stateFile
+$state | ConvertTo-Json -Depth 5 | Set-Content -Path $stateFile -Encoding UTF8
 Write-Output "Bridge na porta $port. Endpoint: $(if($endpoint){$endpoint}else{'(sem tunel)'})"

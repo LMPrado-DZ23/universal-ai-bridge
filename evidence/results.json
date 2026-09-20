@@ -1,0 +1,102 @@
+[
+  {
+    "check": "npm-ci",
+    "exitCode": 0,
+    "command": [
+      "npm",
+      "ci"
+    ],
+    "note": "Clean install before final suite."
+  },
+  {
+    "check": "build",
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "exitCode": 0,
+    "note": "Retested after final source changes; see associated log."
+  },
+  {
+    "check": "typecheck",
+    "command": [
+      "npm",
+      "run",
+      "typecheck"
+    ],
+    "exitCode": 0,
+    "note": "Retested after final source changes; see associated log."
+  },
+  {
+    "check": "tests",
+    "command": [
+      "npm",
+      "test"
+    ],
+    "exitCode": 0,
+    "note": "Retested after final source changes; see associated log."
+  },
+  {
+    "check": "audit-prod",
+    "command": [
+      "npm",
+      "audit",
+      "--omit=dev",
+      "--fetch-retries=0",
+      "--fetch-timeout=15000",
+      "--json"
+    ],
+    "exitCode": 0,
+    "seconds": 7.81
+  },
+  {
+    "check": "audit-all",
+    "command": [
+      "npm",
+      "audit",
+      "--fetch-retries=0",
+      "--fetch-timeout=15000",
+      "--json"
+    ],
+    "exitCode": 0,
+    "seconds": 7.34
+  },
+  {
+    "check": "sbom",
+    "command": [
+      "npm",
+      "sbom",
+      "--sbom-format",
+      "cyclonedx",
+      "--omit=dev"
+    ],
+    "exitCode": 0,
+    "seconds": 0.72
+  },
+  {
+    "check": "source",
+    "command": [
+      "npm",
+      "run",
+      "check:source"
+    ],
+    "exitCode": 0,
+    "note": "Retested after final source changes; see associated log."
+  },
+  {
+    "check": "diff",
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exitCode": 0,
+    "note": "Retested after final source changes; see associated log."
+  },
+  {
+    "check": "doctor-smoke",
+    "exitCode": 0,
+    "note": "Real local HTTP authentication and tools/list; 23 safe tools."
+  }
+]

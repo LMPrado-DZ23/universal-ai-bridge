@@ -1,10 +1,7 @@
+import { isolated } from "../isolate.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { readFileSync, statSync } from "node:fs";
-import { extname } from "node:path";
-import ExcelJS from "exceljs";
-import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
+import { statSync } from "node:fs";
 import { safeResolve } from "../security/paths.js";
 import { ok, fail, type Ctx } from "./helpers.js";
 
@@ -39,16 +36,15 @@ export function registerDocTools(server: McpServer, ctx: Ctx): void {
       inputSchema: {
         path: z.string(),
         offset: z.number().int().min(0).default(0),
-        limit: z.number().int().min(1).optional(),
+        limit: z.number().int().min(1).max(MAX_TEXT).optional(),
       },
     },
     async ({ path, offset, limit }) => {
       try {
         const abs = guard(path);
-        const parser = new PDFParse({ data: readFileSync(abs) });
-        const result = await parser.getText();
+        const text = await isolated<string>({kind:"document",format:"pdf",path:abs,maxBytes:maxBytes()}, 10000, ctx.signal);
         ctx.audit.record({ tool: "read_pdf", decision: "allow", args: { path } });
-        return ok(paginate(result.text ?? "", offset, limit));
+        return ok(paginate(text, offset, limit));
       } catch (e) {
         return fail(String((e as Error).message));
       }
@@ -63,13 +59,13 @@ export function registerDocTools(server: McpServer, ctx: Ctx): void {
       inputSchema: {
         path: z.string(),
         offset: z.number().int().min(0).default(0),
-        limit: z.number().int().min(1).optional(),
+        limit: z.number().int().min(1).max(MAX_TEXT).optional(),
       },
     },
     async ({ path, offset, limit }) => {
       try {
         const abs = guard(path);
-        const { value } = await mammoth.extractRawText({ buffer: readFileSync(abs) });
+        const value = await isolated<string>({kind:"document",format:"docx",path:abs,maxBytes:maxBytes()}, 10000, ctx.signal);
         ctx.audit.record({ tool: "read_docx", decision: "allow", args: { path } });
         return ok(paginate(value ?? "", offset, limit));
       } catch (e) {
@@ -93,23 +89,9 @@ export function registerDocTools(server: McpServer, ctx: Ctx): void {
     async ({ path, sheet, offset, max_rows }) => {
       try {
         const abs = guard(path);
-        const wb = new ExcelJS.Workbook();
-        const isCsv = extname(abs).toLowerCase() === ".csv";
-        if (isCsv) await wb.csv.readFile(abs);
-        else await wb.xlsx.readFile(abs);
-        const ws0 = sheet ? wb.getWorksheet(sheet) : wb.worksheets[0];
-        if (!ws0) return fail(`Aba não encontrada: ${sheet ?? "(primeira)"}`);
-
-        const rows: unknown[][] = [];
-        ws0.eachRow((row) => {
-          // row.values é 1-indexado (índice 0 vazio); normaliza para array simples.
-          const vals = Array.isArray(row.values) ? (row.values as unknown[]).slice(1) : [];
-          rows.push(vals);
-        });
-        const total = rows.length;
-        const page = rows.slice(offset, offset + max_rows);
+        const result = await isolated({kind:"document",format:"sheet",path:abs,maxBytes:maxBytes(),sheet,offset,maxRows:max_rows},10000,ctx.signal);
         ctx.audit.record({ tool: "read_sheet", decision: "allow", args: { path, sheet } });
-        return ok(JSON.stringify({ sheet: ws0.name, total_rows: total, offset, rows: page }, null, 2));
+        return ok(JSON.stringify(result, null, 2));
       } catch (e) {
         return fail(String((e as Error).message));
       }

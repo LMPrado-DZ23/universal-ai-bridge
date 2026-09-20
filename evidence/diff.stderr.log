@@ -1,0 +1,7 @@
+warning: in the working copy of 'installer/control/control.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'installer/scripts/configure.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'installer/scripts/ensure-cloudflared.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'installer/scripts/ensure-node.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'installer/scripts/healthcheck.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'installer/scripts/launcher.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'installer/scripts/stop-access.ps1', LF will be replaced by CRLF the next time Git touches it

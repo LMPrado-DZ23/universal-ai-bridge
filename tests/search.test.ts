@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 // Testa search_files/search_content/read parcial via HTTP real (modo safe).
 const distEntry = resolve(__dirname, "..", "dist", "index.js");
 const PORT = 8990 + Math.floor(Math.random() * 9);
-const TOKEN = "tok-search-0123456789abcdef";
+const TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const BASE = `http://127.0.0.1:${PORT}`;
 let srv: ChildProcess | undefined;
 let ws: string;

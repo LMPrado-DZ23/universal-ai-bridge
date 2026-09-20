@@ -22,7 +22,7 @@ export function registerPtyTools(server: McpServer, ctx: Ctx): void {
         "Inicia um programa num pseudo-terminal (para apps interativos/full-screen). Retorna pty_id. " +
         "Use pty_output/pty_write/pty_resize/pty_kill. Requer @lydell/node-pty. Sujeito a aprovação.",
       inputSchema: {
-        command: z.string().describe("Comando único (ex.: 'python', 'node')"),
+        command: z.string().max(65536).describe("Comando único (ex.: 'python', 'node')"),
         cwd: z.string().default(".").describe("Diretório relativo ao workspace"),
         cols: z.number().int().min(20).max(500).default(120),
         rows: z.number().int().min(5).max(200).default(30),
@@ -30,7 +30,7 @@ export function registerPtyTools(server: McpServer, ctx: Ctx): void {
       },
     },
     async ({ command, cwd, cols, rows, confirm_token }) => {
-      const core = { command, cwd };
+      const core = { command, cwd, cols, rows, env: { ...ctx.sessionEnv } };
       try {
         const decision = ctx.policy.checkCommand(command);
         if (!decision.ok) return fail(`Bloqueado pela política: ${decision.reason}`);
@@ -70,10 +70,11 @@ export function registerPtyTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Escrever no PTY",
       description: "Envia texto (teclas) ao PTY. Ex.: 'ls\\n', ou '\\u0003' para Ctrl-C.",
-      inputSchema: { pty_id: z.string(), data: z.string() },
+      inputSchema: { pty_id: z.string(), data: z.string().max(65536) },
     },
     async ({ pty_id, data }) => {
       try {
+        if(ctx.config.auditRequired)ctx.audit.record({tool:"pty_write",decision:"allow",args:{}});
         ctx.pty.write(pty_id, data);
         return ok(`✔ Enviado ao PTY ${pty_id}.`);
       } catch (e) {
@@ -91,6 +92,7 @@ export function registerPtyTools(server: McpServer, ctx: Ctx): void {
     },
     async ({ pty_id, cols, rows }) => {
       try {
+        if(ctx.config.auditRequired)ctx.audit.record({tool:"pty_resize",decision:"allow",args:{}});
         ctx.pty.resize(pty_id, cols, rows);
         return ok(`✔ Redimensionado para ${cols}x${rows}.`);
       } catch (e) {
@@ -108,6 +110,7 @@ export function registerPtyTools(server: McpServer, ctx: Ctx): void {
     },
     async ({ pty_id }) => {
       try {
+        if(ctx.config.auditRequired)ctx.audit.record({tool:"pty_kill",decision:"allow",args:{}});
         ctx.pty.kill(pty_id);
         ctx.audit.record({ tool: "pty_kill", decision: "executed", args: { pty_id } });
         return ok(`✔ PTY ${pty_id} encerrado.`);

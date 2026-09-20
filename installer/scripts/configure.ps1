@@ -7,6 +7,7 @@ param(
   [int]$Port = 8787
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "private-state.ps1")
 
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $ws = Join-Path $DataDir "workspace"
@@ -66,6 +67,11 @@ TUNNEL_HOSTNAME=$tunnelHost
 # Escreve SEM BOM: um BOM na 1ª linha corromperia a chave BRIDGE_MODE
 # (e o modo cairia silenciosamente para safe).
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+if(-not (Test-Path $envFile)){New-Item -ItemType File -Path $envFile | Out-Null}
+Set-BridgePrivate $envFile
 [System.IO.File]::WriteAllText($envFile, $content, $utf8NoBom)
 
 Write-Output "Config escrita em $envFile (modo=$Mode, porta=$Port, workspace=$ws)"
+
+. (Join-Path $PSScriptRoot "private-state.ps1")
+Set-BridgePrivate (Join-Path $DataDir ".env")

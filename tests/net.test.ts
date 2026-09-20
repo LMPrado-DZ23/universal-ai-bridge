@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isPrivateIp } from "../src/tools/net.js";
+import { isPrivateIp, downloadPublic } from "../src/tools/net.js";
 
 describe("isPrivateIp (anti-SSRF)", () => {
   it("bloqueia loopback e privados IPv4", () => {
@@ -19,4 +19,14 @@ describe("isPrivateIp (anti-SSRF)", () => {
       expect(isPrivateIp(ip), ip).toBe(false);
     }
   });
+});
+
+it('blocks hexadecimal mapped IPv4 and non-global IPv6 ranges', () => {
+  for(const ip of ['::ffff:7f00:1','::ffff:a00:1','fe90::1','febf::1','64:ff9b::7f00:1','2002:7f00:1::','2001:db8::1','198.18.0.1','192.0.2.1'])expect(isPrivateIp(ip)).toBe(true);
+});
+
+it('download rejects loopback before connecting and honors cancellation',async()=>{
+  await expect(downloadPublic('http://127.0.0.1:1/',1000,AbortSignal.timeout(1000))).rejects.toThrow(/bloqueado/);
+  const controller=new AbortController();controller.abort();
+  await expect(downloadPublic('https://example.com/',1000,controller.signal)).rejects.toThrow();
 });

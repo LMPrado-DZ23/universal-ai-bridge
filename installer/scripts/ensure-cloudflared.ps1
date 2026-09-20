@@ -1,49 +1,23 @@
-# ensure-cloudflared.ps1 — baixa o cloudflared.exe e VERIFICA a assinatura
-# Authenticode (assinado pela Cloudflare) antes de instalar. Fail-closed.
-# Version: por padrão "latest"; pode ser fixada (ex.: -Version "2024.12.2").
-param(
-  [Parameter(Mandatory = $true)][string]$InstallDir,
-  # Versão FIXA por padrão (não 'latest' mutável). Pode ser sobrescrita.
-  [string]$Version = "2025.8.1"
-)
-$ErrorActionPreference = "Stop"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-$bin = Join-Path $InstallDir "bin"
+# Pinned release and checksum from https://github.com/cloudflare/cloudflared/releases/tag/2025.8.1
+param([Parameter(Mandatory=$true)][string]$InstallDir, [ValidateSet('2025.8.1')][string]$Version='2025.8.1')
+$ErrorActionPreference='Stop'
+[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+$expected='b5d598b00cc3a28cabc5812d9f762819334614bae452db4e7f23eefe7b081556'
+$bin=Join-Path $InstallDir 'bin'
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
-$exe = Join-Path $bin "cloudflared.exe"
-
-if (Test-Path $exe) {
-  $existing = Get-AuthenticodeSignature $exe
-  if ($existing.Status -eq 'Valid') { Write-Output "cloudflared já presente e assinado."; exit 0 }
-  Write-Output "cloudflared presente sem assinatura válida; rebaixando."
-  Remove-Item $exe -Force
+$exe=Join-Path $bin 'cloudflared.exe'
+function Assert-Cloudflared([string]$Path) {
+  if ((Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Checksum cloudflared nao corresponde a versao fixada.' }
+  $sig=Get-AuthenticodeSignature $Path
+  if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch '(?i)(?:^|,\s*)(?:O|CN)="?Cloudflare,? Inc\.?"?(?:,|$)') {
+    throw 'Assinatura/editor Cloudflare nao verificavel. Instalacao interrompida; nenhum fallback.'
+  }
 }
-
-function Get-Url([string]$v) {
-  if ($v -eq "latest") { return "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" }
-  return "https://github.com/cloudflare/cloudflared/releases/download/$v/cloudflared-windows-amd64.exe"
-}
-$tmp = Join-Path $env:TEMP "cloudflared-dl.exe"
-Write-Output "Baixando cloudflared ($Version)..."
+if (Test-Path $exe) { Assert-Cloudflared $exe; Write-Output 'cloudflared existente verificado.'; exit 0 }
+$tmp=Join-Path $bin ('.cloudflared-'+[guid]::NewGuid().ToString('N')+'.exe')
 try {
-  Invoke-WebRequest -Uri (Get-Url $Version) -OutFile $tmp -UseBasicParsing
-} catch {
-  # Resiliência: se a versão fixada não existir, cai para 'latest' — a
-  # verificação de assinatura Authenticode (abaixo) continua sendo a garantia.
-  Write-Output "Versão $Version indisponível; usando 'latest' (assinatura ainda é verificada)."
-  Invoke-WebRequest -Uri (Get-Url "latest") -OutFile $tmp -UseBasicParsing
-}
-
-$sig = Get-AuthenticodeSignature $tmp
-if ($sig.Status -ne 'Valid') {
-  Remove-Item $tmp -Force
-  throw "Assinatura Authenticode do cloudflared inválida: $($sig.Status)."
-}
-$subject = $sig.SignerCertificate.Subject
-if ($subject -notmatch 'Cloudflare') {
-  Remove-Item $tmp -Force
-  throw "cloudflared assinado por editor inesperado: $subject"
-}
-Move-Item $tmp $exe -Force
-Write-Output "cloudflared verificado e instalado ($subject)."
+  Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/download/$Version/cloudflared-windows-amd64.exe" -OutFile $tmp -UseBasicParsing
+  Assert-Cloudflared $tmp
+  Move-Item $tmp $exe
+  Write-Output "cloudflared $Version verificado."
+} finally { if(Test-Path $tmp){Remove-Item $tmp -Force} }

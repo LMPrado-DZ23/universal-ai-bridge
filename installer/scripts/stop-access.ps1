@@ -1,7 +1,8 @@
 # stop-access.ps1 — PARADA DE EMERGÊNCIA. Encerra bridge e túnel e desativa
 # o início automático. O acesso remoto cai imediatamente.
 param([string]$DataDir = "")
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "private-state.ps1")
 
 $taskName = "UniversalAIBridge"
 
@@ -15,17 +16,16 @@ $statePath = if ($DataDir) { Join-Path $DataDir "state.json" } else { "" }
 if ($statePath -and (Test-Path $statePath)) {
   try {
     $state = Get-Content $statePath -Raw | ConvertFrom-Json
-    foreach ($procId in @($state.nodePid, $state.tunnelPid)) {
-      if ($procId) {
-        # taskkill /T encerra a árvore (filhos do processo do bridge).
-        & taskkill /PID $procId /T /F 2>$null | Out-Null
-        $killed++
-      }
+    foreach ($identity in @($state.nodeIdentity, $state.tunnelIdentity)) {
+      if (Test-BridgeIdentity $identity) {
+        & taskkill /PID $identity.pid /T /F 2>$null | Out-Null
+        if($LASTEXITCODE -eq 0){$killed++}
+      } elseif ($identity) { Write-Warning 'Processo ausente ou identidade mudou; PID nao encerrado.' }
     }
-  } catch {}
+  } catch { Write-Warning "Nao foi possivel validar/parar processos: $_" }
 } else {
   Write-Output "Aviso: state.json ausente — nenhum PID registrado para encerrar."
 }
 
-Write-Output "Acesso interrompido: $killed processo(s) do bridge encerrado(s); inicio automatico desativado."
+Write-Output "Resultado da parada: $killed processo(s) do bridge encerrado(s); inicio automatico desativado."
 Write-Output "Para religar: reative a tarefa 'UniversalAIBridge' ou reinstale/execute o painel."

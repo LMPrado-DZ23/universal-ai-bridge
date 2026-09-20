@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 const distEntry = resolve(__dirname, "..", "dist", "index.js");
 const PORT = 8870 + Math.floor(Math.random() * 9);
-const TOKEN = "session-token-0123456789abcd";
+const TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const BASE = `http://127.0.0.1:${PORT}`;
 let srv: ChildProcess | undefined;
 let ws: string;
@@ -58,6 +58,19 @@ describe("Fase 1 — cleanup por sessão", () => {
     const t2 = statSync(alive).mtimeMs;
     expect(t2).toBe(t1); // processo morto → arquivo não avança mais
   }, 20000);
+
+  it("HTTP health e outra sessão respondem durante comando longo", async () => {
+    const a=await initSession(), b=await initSession();
+    let ended=false;
+    const long=callTool(a,'run_command',{program:'node',args:['-e','setTimeout(()=>process.stdout.write("done"),1500)']}).then(r=>{ended=true;return r;});
+    await wait(150);
+    const health=await fetch(`${BASE}/health`,{signal:AbortSignal.timeout(700)});
+    expect(health.ok).toBe(true);
+    const second=await callTool(b,'get_workspace_info',{});
+    expect(second.isError).toBeFalsy();expect(ended).toBe(false);
+    expect((await long).content[0].text).toContain('done');
+    await fetch(`${BASE}/mcp`,{method:'DELETE',headers:H(a)});await fetch(`${BASE}/mcp`,{method:'DELETE',headers:H(b)});
+  });
 
   it("run_command NÃO grava o comando/segredo no audit (C5)", async () => {
     const sid = await initSession();

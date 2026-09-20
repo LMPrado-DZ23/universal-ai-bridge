@@ -1,3 +1,4 @@
+import { ConfirmStore } from "../confirm.js";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
@@ -36,21 +37,28 @@ export function startAdmin(port: number, deps: AdminDeps): { close: () => void }
     next();
   });
 
+  app.get('/admin/approvals', (_req,res) => {res.setHeader('Cache-Control','no-store');res.json(ConfirmStore.listHuman());});
+  app.post('/admin/approvals/:id', (req,res) => {
+    if (typeof req.body?.approve !== 'boolean') {res.status(400).json({error:'approve deve ser boolean'});return;}
+    const found=ConfirmStore.decideHuman(String(req.params.id),req.body.approve);
+    res.status(found?200:404).json({decided:found});
+  });
   app.get("/admin/status", (_req, res) => res.json(deps.status()));
 
   app.post("/admin/panic", (_req, res) => {
     deps.onPanic();
-    res.json({ stopped: true });
+    res.json({ stopped: true, persistence: deps.tokenStore.persistence });
   });
 
   app.post("/admin/revoke", (_req, res) => {
     deps.onRevoke();
-    res.json({ revoked: true });
+    res.json({ revoked: true, persistence: deps.tokenStore.persistence });
   });
 
   app.post("/admin/rotate", (_req, res) => {
     const token = deps.tokenStore.rotate();
-    res.json({ token });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ token, persistence: deps.tokenStore.persistence, persisted: deps.tokenStore.persistence === "persisted" });
   });
 
   const server: Server = app.listen(port, "127.0.0.1", () => {

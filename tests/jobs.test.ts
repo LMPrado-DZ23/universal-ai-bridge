@@ -66,7 +66,9 @@ describe("JobManager (execução estruturada, shell:false)", () => {
     expect(m.view(id).running).toBe(true);
     m.destroy();
     await wait(400);
-    expect(m.view(id).running).toBe(false);
+    expect(m.list()).toEqual([]);
+    expect(() => m.start(node, [], dir)).toThrow(/encerrada/);
+    m.destroy(); // idempotent
     rmSync(dir, { recursive: true, force: true });
   });
 });

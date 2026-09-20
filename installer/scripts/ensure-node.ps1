@@ -1,4 +1,4 @@
-# ensure-node.ps1 — garante Node.js 22+ instalado, verificando integridade do MSI
+# ensure-node.ps1 — garante Node.js 22.12+/24 instalado, verificando integridade do MSI
 # (SHA-256 do SHASUMS256.txt oficial + assinatura Authenticode). Fail-closed.
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -7,14 +7,20 @@ $NodeVersion = "v22.12.0"
 $MsiName = "node-$NodeVersion-x64.msi"
 $Base = "https://nodejs.org/dist/$NodeVersion"
 
-function Get-NodeMajor {
-  try { $v = (& node --version) 2>$null; if ($v -match 'v(\d+)\.') { return [int]$Matches[1] } } catch {}
-  return 0
+function Test-NodeVersion {
+  try {
+    $v = (& node --version) 2>$null
+    if ($v -match '^v(\d+)\.(\d+)\.(\d+)') {
+      $major=[int]$Matches[1]; $minor=[int]$Matches[2]
+      return ($major -eq 22 -and $minor -ge 12) -or $major -eq 24 -or $major -ge 26
+    }
+  } catch {}
+  return $false
 }
 
-if ((Get-NodeMajor) -ge 22) { Write-Output "Node.js OK."; exit 0 }
+if (Test-NodeVersion) { Write-Output "Node.js OK."; exit 0 }
 
-Write-Output "Node.js 22+ ausente. Baixando $MsiName (verificado)..."
+Write-Output "Node.js 22.12+/24 ausente. Baixando $MsiName (verificado)..."
 $msi = Join-Path $env:TEMP $MsiName
 Invoke-WebRequest -Uri "$Base/$MsiName" -OutFile $msi -UseBasicParsing
 
@@ -38,4 +44,4 @@ Write-Output "Assinatura do Node OK ($($sig.SignerCertificate.Subject))."
 Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 Remove-Item $msi -Force -ErrorAction SilentlyContinue
-if ((Get-NodeMajor) -ge 22) { Write-Output "Node instalado e verificado." } else { throw "Falha ao instalar Node 22+." }
+if (Test-NodeVersion) { Write-Output "Node instalado e verificado." } else { throw "Falha ao instalar Node 22.12+/24." }

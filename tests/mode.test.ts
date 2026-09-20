@@ -13,8 +13,8 @@ describe("resolveMode (safe vs admin)", () => {
 
   it("safe: shell só liga com valor explícito 'true'", () => {
     expect(resolveMode({ BRIDGE_ALLOW_SHELL: "true" }).allowShell).toBe(true);
-    expect(resolveMode({ BRIDGE_ALLOW_SHELL: "1" }).allowShell).toBe(false);
-    expect(resolveMode({ BRIDGE_ALLOW_SHELL: "" }).allowShell).toBe(false);
+    expect(() => resolveMode({ BRIDGE_ALLOW_SHELL: "1" })).toThrow(/BRIDGE_ALLOW_SHELL/);
+    expect(() => resolveMode({ BRIDGE_ALLOW_SHELL: "" })).toThrow(/BRIDGE_ALLOW_SHELL/);
   });
 
   it("safe NUNCA habilita Docker, mesmo com a flag", () => {

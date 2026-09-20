@@ -21,12 +21,13 @@ function Get-EnvVal([string]$key) {
   return ""
 }
 function Get-AdminPort {
+  $explicit=Get-EnvVal "BRIDGE_ADMIN_PORT"; if($explicit){return [int]$explicit}
   $p = Get-EnvVal "BRIDGE_PORT"; if (-not $p) { $p = "8787" }
   return ([int]$p + 1)
 }
 function Invoke-Admin([string]$path) {
   $secret = Get-EnvVal "BRIDGE_ADMIN_SECRET"
-  if (-not $secret) { throw "BRIDGE_ADMIN_SECRET nao encontrado no .env" }
+  if (-not $secret) { $secret=(Get-Content (Join-Path $DataDir "admin.secret") -Raw).Trim() }
   return Invoke-RestMethod -Uri "http://127.0.0.1:$(Get-AdminPort)$path" -Method Post -Headers @{ "x-admin-secret" = $secret } -TimeoutSec 5
 }
 
@@ -91,18 +92,23 @@ $btnStop = New-Button "Parar acesso imediatamente" 20 250 310
 $btnStop.BackColor = [System.Drawing.Color]::MistyRose
 $btnUninstall = New-Button "Desinstalar" 340 250 150
 
+$btnApprovals = New-Button "Aprovar / Recusar acoes" 20 300 470
+$btnApprovals.Add_Click({
+  try { & (Join-Path $scripts 'approvals.ps1') -DataDir $DataDir }
+  catch { [System.Windows.Forms.MessageBox]::Show("Falha: $_", 'Aprovacoes') | Out-Null }
+})
 $btnRotate.Add_Click({
     try {
       $r = Invoke-Admin "/admin/rotate"
       Set-Clipboard -Value $r.token
-      [System.Windows.Forms.MessageBox]::Show("Novo token gerado e copiado. Atualize o conector no ChatGPT/Claude com este token.", "Token rotacionado") | Out-Null
+      [System.Windows.Forms.MessageBox]::Show("Novo token gerado e copiado. Persistencia: $($r.persistence). Atualize o conector no ChatGPT/Claude com este token.", "Token rotacionado") | Out-Null
     } catch { [System.Windows.Forms.MessageBox]::Show("Falha ao rotacionar: $_", "Erro") | Out-Null }
   })
 
 $btnRevoke.Add_Click({
     $r = [System.Windows.Forms.MessageBox]::Show("Revogar o token e fechar as sessões remotas agora? (o bridge continua rodando)", "Revogar", "YesNo", "Warning")
     if ($r -eq "Yes") {
-      try { Invoke-Admin "/admin/revoke" | Out-Null; [System.Windows.Forms.MessageBox]::Show("Acesso remoto revogado. Rotacione o token para reconectar.", "Revogado") | Out-Null }
+      try { $revoked=Invoke-Admin "/admin/revoke"; [System.Windows.Forms.MessageBox]::Show("Acesso remoto revogado. Persistencia: $($revoked.persistence). Rotacione o token para reconectar.", "Revogado") | Out-Null }
       catch { [System.Windows.Forms.MessageBox]::Show("Falha ao revogar: $_", "Erro") | Out-Null }
     }
   })
