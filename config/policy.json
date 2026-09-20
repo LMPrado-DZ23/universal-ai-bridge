@@ -22,6 +22,8 @@
   },
   "files": {
     "deniedExtensions": [".exe", ".dll", ".sys", ".msi", ".scr", ".bat", ".cmd", ".ps1"],
-    "maxWriteBytes": 5000000
+    "maxWriteBytes": 5000000,
+    "maxReadBytes": 5000000,
+    "listMaxEntries": 2000
   }
 }

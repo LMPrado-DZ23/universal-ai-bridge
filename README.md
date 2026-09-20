@@ -1,21 +1,70 @@
 # Universal AI Bridge
 
 Um **servidor MCP local** que deixa **qualquer IA que fale MCP** — no navegador
-(ChatGPT, Claude.ai) ou local (Claude Desktop, Cursor, Gemini CLI) — criar, ler,
-editar e executar projetos no seu PC, **com segurança**.
+(ChatGPT, Claude.ai) ou local (Claude Desktop, Cursor, Gemini CLI) — programar no
+seu PC: criar/editar projetos, rodar terminal (inclusive tarefas longas e
+interativas) e, no modo admin, usar Docker. **Com dois modos de segurança
+claramente separados.**
 
 Um código, dois transportes:
 
 - **stdio** → clientes MCP locais (sem rede, sem token).
 - **Streamable HTTP** → IAs no navegador, via túnel HTTPS (`cloudflared`).
 
-Arquitetura: `IA → Auth → Policy Engine → Executor → Audit log`.
-Tudo o que a IA faz fica **preso a uma pasta `workspace/`** e passa por uma
-política determinística + aprovação humana.
+Arquitetura: `IA → Auth → Policy Engine → Executor → Audit`.
 
 ---
 
-## 1. Instalar
+## Sumário
+
+1. [Modos de segurança](#1-modos-de-segurança)
+2. [Instalação](#2-instalação)
+3. [Configuração `.env`](#3-configuração-env)
+4. [Claude Desktop / Cursor / Gemini CLI (stdio)](#4-claude-desktop--cursor--gemini-cli-stdio)
+5. [ChatGPT / Claude.ai no navegador (HTTP + túnel)](#5-chatgpt--claudeai-no-navegador-http--túnel)
+6. [Terminal e tarefas longas](#6-terminal-e-tarefas-longas)
+7. [Docker (modo admin)](#7-docker-modo-admin)
+8. [Tokens](#8-tokens)
+9. [Logs / auditoria](#9-logs--auditoria)
+10. [Desligamento de emergência](#10-desligamento-de-emergência)
+11. [Recuperação após erro](#11-recuperação-após-erro)
+12. [Riscos de acesso total](#12-riscos-de-acesso-total)
+13. [Multiplataforma](#13-multiplataforma)
+14. [Ferramentas](#14-ferramentas)
+
+---
+
+## 1. Modos de segurança
+
+O modo é escolhido por `BRIDGE_MODE`.
+
+### Modo seguro (`safe`) — padrão
+
+- Workspace **jaulado** (nada sai da pasta configurada; symlinks para fora são bloqueados).
+- Shell **desligado** por padrão; liga só com `BRIDGE_ALLOW_SHELL=true`.
+- Docker **sempre bloqueado**.
+- Ações com efeito colateral passam por aprovação (`confirm` ou `local`).
+
+### Modo administrador (`admin`) — opt-in deliberado
+
+- Shell **ligado** por padrão; Docker liberável com `BRIDGE_ALLOW_DOCKER=true`.
+- **Exige reconhecimento explícito**: `BRIDGE_ADMIN_ACK=eu-aceito-acesso-total`.
+  Sem essa frase exata, o servidor **não sobe** em modo admin (cai para safe/erro).
+- Continua com workspace jaulado (o escopo é a raiz do workspace — amplie-a
+  conscientemente se precisar).
+
+> ⚠️ **No modo administrador, qualquer pessoa que obtenha os tokens necessários
+> poderá executar ações com os privilégios do processo no computador.**
+
+Recomendação: rode o modo admin em um **usuário dedicado do sistema ou VM**, e
+exponha o HTTP apenas atrás de VPN/Cloudflare Access — nunca por uma URL pública
+permanente.
+
+---
+
+## 2. Instalação
+
+Requer **Node.js 22+**.
 
 ```bash
 git clone https://github.com/LMPrado-DZ23/universal-ai-bridge.git
@@ -24,27 +73,42 @@ npm install
 npm run build
 ```
 
-No Windows, há um atalho que faz install + build + gera o `.env` com token:
+No Windows, um atalho faz install + build + gera o `.env` com token criptográfico:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
-Copie `env.example` para `.env` e ajuste. Gere um token forte:
+---
+
+## 3. Configuração `.env`
+
+Copie `env.example` para `.env`. O servidor **carrega o `.env` automaticamente**
+(via `process.loadEnvFile`, nativo do Node 22). Gere um token forte:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Cole em `BRIDGE_TOKEN` no `.env`.
+| Variável | Efeito |
+|---|---|
+| `BRIDGE_MODE` | `safe` (padrão) ou `admin`. |
+| `BRIDGE_ADMIN_ACK` | Só admin: precisa ser `eu-aceito-acesso-total`. |
+| `BRIDGE_TOKEN` | Token Bearer do HTTP. Sem ele, o HTTP não sobe. |
+| `BRIDGE_PORT` | Porta loopback (padrão 8787). |
+| `BRIDGE_ALLOWED_ORIGINS` | Origins permitidos (CSV) — anti DNS-rebinding. |
+| `BRIDGE_WORKSPACE` | Raiz jaulada. Vazio = `./workspace`. |
+| `BRIDGE_APPROVAL` | `auto` · `confirm` (padrão) · `local`. |
+| `BRIDGE_ALLOW_SHELL` | `true` liga o terminal (obrigatório no safe). |
+| `BRIDGE_ALLOW_DOCKER` | `true` libera Docker (só tem efeito no admin). |
 
 ---
 
-## 2. Usar com clientes locais (Claude Desktop / Cursor / Gemini CLI)
+## 4. Claude Desktop / Cursor / Gemini CLI (stdio)
 
 Não precisa de túnel. Aponte o cliente para o transporte **stdio**.
 
-**Claude Desktop** — em `claude_desktop_config.json`:
+**Claude Desktop** — `claude_desktop_config.json`:
 
 ```json
 {
@@ -52,76 +116,154 @@ Não precisa de túnel. Aponte o cliente para o transporte **stdio**.
     "universal-ai-bridge": {
       "command": "node",
       "args": ["C:\\caminho\\para\\universal-ai-bridge\\dist\\index.js", "--transport", "stdio"],
-      "env": { "BRIDGE_WORKSPACE": "C:\\caminho\\para\\ai-workspace" }
+      "env": {
+        "BRIDGE_WORKSPACE": "C:\\caminho\\para\\ai-workspace",
+        "BRIDGE_ALLOW_SHELL": "true"
+      }
     }
   }
 }
 ```
 
-> Troque `C:\\caminho\\para\\...` pelo caminho real onde você clonou o projeto.
-
-**Gemini CLI** — em `~/.gemini/settings.json`, mesma ideia sob `mcpServers`.
+> No Linux/macOS use caminhos POSIX (ex.: `/home/voce/universal-ai-bridge/dist/index.js`).
+> **Gemini CLI**: mesma estrutura em `~/.gemini/settings.json` sob `mcpServers`.
 
 ---
 
-## 3. Usar no navegador (ChatGPT / Claude.ai)
+## 5. ChatGPT / Claude.ai no navegador (HTTP + túnel)
 
-O navegador só conecta em MCP **remoto (HTTPS)**. Fluxo:
-
-### a) Suba o servidor HTTP (loopback)
+O navegador só conecta em MCP **remoto (HTTPS)**.
 
 ```bash
 npm run start:http
 ```
 
-Ele escuta só em `http://127.0.0.1:8787/mcp`.
-
-### b) Exponha via cloudflared
+Escuta só em `http://127.0.0.1:8787/mcp`. Exponha com cloudflared:
 
 ```bash
 cloudflared tunnel --url http://127.0.0.1:8787
 ```
 
-O cloudflared devolve uma URL tipo `https://algo-aleatorio.trycloudflare.com`.
-**Acrescente o host dela** em `BRIDGE_ALLOWED_ORIGINS` no `.env` e reinicie
-(`BRIDGE_ALLOWED_ORIGINS=...,https://algo-aleatorio.trycloudflare.com`).
+O cloudflared devolve uma URL `https://...trycloudflare.com`. Acrescente esse host
+em `BRIDGE_ALLOWED_ORIGINS` e reinicie. O endpoint MCP é `https://.../mcp`.
 
-O endpoint MCP final é `https://algo-aleatorio.trycloudflare.com/mcp`.
+- **ChatGPT** (Settings → Connectors / modo desenvolvedor): adicione conector MCP com
+  a URL `/mcp` e header `Authorization: Bearer <BRIDGE_TOKEN>`.
+- **Claude.ai** (Settings → Connectors → custom): mesma URL e header.
+- Cole o conteúdo de [`SKILL.md`](./SKILL.md) nas instruções do GPT/projeto.
 
-### c) Registre o conector
-
-- **ChatGPT** (Settings → Connectors / modo desenvolvedor): adicione um conector
-  MCP com a URL `/mcp` e, na autenticação, header
-  `Authorization: Bearer <seu BRIDGE_TOKEN>`.
-- **Claude.ai** (Settings → Connectors → Add custom connector): mesma URL e
-  header.
-
-### d) Ensine a skill
-
-Cole o conteúdo de [`SKILL.md`](./SKILL.md) nas instruções personalizadas do
-GPT/projeto, ou instale como skill onde a plataforma permitir.
+> Túnel público temporário serve para teste. Para uso permanente, prefira
+> Cloudflare Access / VPN.
 
 ---
 
-## 4. Segurança (o que já vem ligado)
+## 6. Terminal e tarefas longas
 
-| Camada | Proteção |
-|---|---|
-| **Jaula** | Tudo preso a `workspace/`; `..` e caminhos absolutos são rejeitados. |
-| **Auth** | HTTP exige `Bearer <token>` (comparação constante-tempo). Sem token, o HTTP nem sobe. |
-| **Origin** | Checagem de `Origin` + proteção DNS-rebinding do SDK. |
-| **Loopback** | O HTTP escuta só em `127.0.0.1`; a exposição externa é só pelo túnel. |
-| **Policy Engine** | Allowlist/denylist de comandos, bloqueio de `rm -rf`/`DROP`/etc., sem encadeamento, limite de tamanho e extensões proibidas. |
-| **Aprovação** | Ações com efeito colateral exigem `confirm_token` (modo `confirm`). |
-| **Audit** | Tudo em `audit/audit-AAAA-MM-DD.jsonl` (append-only, sem conteúdo/segredos). |
+Disponível quando `shell_enabled: true`.
 
-Ajuste a política em [`config/policy.json`](./config/policy.json).
+- **Comando curto:** `run_command` executa e espera terminar.
+- **Tarefa longa / streaming:** `run_job` retorna um `job_id`; `job_output` devolve
+  a saída incremental (passe os cursores retornados para acompanhar em tempo real).
+- **Interativo:** `job_write` envia texto ao stdin do processo.
+- **Cancelamento:** `job_cancel` encerra o job **e toda a árvore de processos-filho**
+  (`taskkill /T` no Windows, kill de grupo no POSIX).
+
+Só binários da allowlist (`config/policy.json`) rodam; encadeamento e
+redirecionamento (`&& | ; > <`) são bloqueados.
+
+> **`run_command`/`run_job` não são uma sandbox.** Rodam com os privilégios do
+> processo; binários capazes de executar código (node, python) podem alcançar
+> caminhos fora do workspace. Para isolamento real, use usuário/VM dedicados.
 
 ---
 
-## 5. Ferramentas
+## 7. Docker (modo admin)
 
-`get_workspace_info`, `list_dir`, `read_file`, `write_file`, `edit_file`,
-`make_dir`, `move_path`, `create_project`, `run_command`.
+Bloqueado no modo safe. No admin, com `BRIDGE_ALLOW_DOCKER=true`, a ferramenta
+`docker` roda `docker <args>` como job (ex.: `docker build -t app .`).
 
-Detalhes e fluxo de uso em [`SKILL.md`](./SKILL.md).
+> Acesso ao Docker do host costuma equivaler a **root**. Prefira Docker rootless
+> ou um daemon/VM separada.
+
+---
+
+## 8. Tokens
+
+- O token do HTTP fica em `BRIDGE_TOKEN` (no `.env`, que é git-ignored).
+- Comparação em tempo constante (`timingSafeEqual`); nunca é logado.
+- **Rotação:** gere um novo token, atualize o `.env`, reinicie o servidor e o
+  conector. Sessões antigas param de valer.
+- Nunca compartilhe o token nem o cole em páginas/repos.
+
+---
+
+## 9. Logs / auditoria
+
+- Auditoria append-only em `audit/audit-AAAA-MM-DD.jsonl`.
+- Registra ferramenta, decisão (allow/deny/executed/…), metadados e resultado —
+  **nunca** conteúdo integral de arquivos nem segredos.
+- Falha de escrita do log **não derruba** a operação (é silenciosa).
+
+---
+
+## 10. Desligamento de emergência
+
+- Feche o processo do servidor (`Ctrl+C`, ou encerre a janela/serviço).
+- Ao receber `SIGINT`/`SIGTERM`, o servidor **mata todos os jobs** (árvore de
+  processos) e fecha as sessões HTTP antes de sair.
+- Corte imediato do acesso remoto: **pare o `cloudflared`** (o túnel some).
+- Revogação: troque o `BRIDGE_TOKEN` e reinicie.
+
+---
+
+## 11. Recuperação após erro
+
+- Erros de rede/desconexão no HTTP são tratados e **não derrubam** o processo.
+- Sessões HTTP ociosas expiram (30 min) e são limpas automaticamente.
+- Rejeições não tratadas são apenas logadas em stderr.
+- Se um job travar, use `job_cancel`; se o servidor cair, basta reiniciar
+  (`npm run start:http` ou o cliente stdio) — o estado vive no disco (workspace).
+
+---
+
+## 12. Riscos de acesso total
+
+Dar a uma IA acesso ao seu computador é poderoso e perigoso:
+
+- No **modo admin**, quem tiver o token pode agir com os privilégios do processo.
+- `run_command`/Docker **não isolam** o host.
+- Um prompt malicioso ou uma sessão de navegador roubada pode disparar ações.
+
+Mitigações: mantenha o **modo safe** por padrão; use aprovação `local`; rode admin
+em usuário/VM dedicados; exponha só atrás de VPN/Access; gire tokens; revise o
+`audit/`.
+
+---
+
+## 13. Multiplataforma
+
+- **Windows:** suportado (setup.ps1, `taskkill /T` para matar árvore de processos).
+- **Linux / macOS:** suportado (kill de grupo de processos via `detached`).
+  Use caminhos POSIX no `.env` e nas configs dos clientes; o token pode ser gerado com
+  `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+- Symlinks: a jaula resolve o caminho real em todos os SOs (no Windows, a criação
+  de symlink pode exigir modo desenvolvedor — não afeta a proteção).
+
+---
+
+## 14. Ferramentas
+
+**Arquivos:** `get_workspace_info`, `list_dir`, `read_file`, `write_file`,
+`edit_file`, `make_dir`, `move_path`, `create_project`.
+**Terminal:** `run_command`, `run_job`, `job_status`, `job_output`, `job_write`,
+`job_cancel`.
+**Docker (admin):** `docker`.
+
+Fluxo de uso detalhado em [`SKILL.md`](./SKILL.md). Política em
+[`config/policy.json`](./config/policy.json).
+
+---
+
+## Licença
+
+MIT — veja [`LICENSE`](./LICENSE).

@@ -13,6 +13,8 @@ const policy: PolicyFile = {
   files: {
     deniedExtensions: [".exe", ".bat", ".ps1"],
     maxWriteBytes: 1000,
+    maxReadBytes: 1000,
+    listMaxEntries: 100,
   },
 };
 
@@ -43,6 +45,11 @@ describe("PolicyEngine.checkCommand", () => {
     expect(e.checkCommand("git status | grep x").ok).toBe(false);
     expect(e.checkCommand("node a.js; node b.js").ok).toBe(false);
     expect(e.checkCommand("echo $(whoami)").ok).toBe(false);
+  });
+
+  it("nega redirecionamento (> <)", () => {
+    expect(e.checkCommand("node a.js > /etc/passwd").ok).toBe(false);
+    expect(e.checkCommand("python x.py < input").ok).toBe(false);
   });
 
   it("nega comando vazio", () => {

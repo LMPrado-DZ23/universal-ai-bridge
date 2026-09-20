@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   readFileSync,
   writeFileSync,
@@ -10,69 +10,19 @@ import {
   existsSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { spawnSync } from "node:child_process";
-import type { Config } from "./config.js";
-import { PolicyEngine } from "./policy/engine.js";
-import { ConfirmStore } from "./confirm.js";
-import { Audit, sanitizeArgs } from "./audit/log.js";
-import { safeResolve, display } from "./security/paths.js";
+import { safeResolve, display } from "../security/paths.js";
+import { sanitizeArgs } from "../audit/log.js";
+import { ok, fail, gate, type Ctx } from "./helpers.js";
 
-interface Ctx {
-  config: Config;
-  policy: PolicyEngine;
-  confirm: ConfirmStore;
-  audit: Audit;
-}
-
-const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
-const fail = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true });
-
-/**
- * Portão de aprovação para ações com efeito colateral.
- * Retorna null se pode executar; caso contrário retorna a resposta a devolver.
- */
-function gate(
-  ctx: Ctx,
-  tool: string,
-  coreArgs: Record<string, unknown>,
-  confirmToken: string | undefined
-): { proceed: true } | { proceed: false; result: ReturnType<typeof ok> } {
-  if (ctx.config.approval === "auto") return { proceed: true };
-
-  if (!confirmToken) {
-    const token = ctx.confirm.issue(tool, coreArgs);
-    ctx.audit.record({ tool, decision: "confirm-required", args: sanitizeArgs(coreArgs) });
-    return {
-      proceed: false,
-      result: ok(
-        `⚠️ Confirmação necessária para "${tool}".\n` +
-          `Ação: ${JSON.stringify(sanitizeArgs(coreArgs))}\n` +
-          `Para executar, chame "${tool}" de novo com os MESMOS argumentos e confirm_token="${token}".`
-      ),
-    };
-  }
-
-  if (!ctx.confirm.consume(confirmToken, tool, coreArgs)) {
-    return {
-      proceed: false,
-      result: fail("Token de confirmação inválido, expirado ou não corresponde à ação. Refaça sem confirm_token para obter um novo."),
-    };
-  }
-  return { proceed: true };
-}
-
-export function registerTools(server: McpServer, ctx: Ctx): void {
+export function registerFileTools(server: McpServer, ctx: Ctx): void {
   const ws = ctx.config.workspace;
-  mkdirSync(ws, { recursive: true });
-
-  // ── READ-ONLY ──────────────────────────────────────────────────────
 
   server.registerTool(
     "get_workspace_info",
     {
       title: "Informações do workspace",
       description:
-        "Retorna a raiz do workspace, o modo de aprovação e se o shell está habilitado. Chame isto primeiro para se orientar.",
+        "Retorna raiz do workspace, modo (safe/admin), aprovação e se shell/docker estão habilitados. Chame primeiro.",
       inputSchema: {},
     },
     async () => {
@@ -81,8 +31,10 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
         JSON.stringify(
           {
             workspace: ws,
+            mode: ctx.config.mode,
             approval: ctx.config.approval,
             shell_enabled: ctx.config.allowShell,
+            docker_enabled: ctx.config.allowDocker,
             note: "Todos os caminhos são relativos a esta raiz. Você não pode sair dela.",
           },
           null,
@@ -102,12 +54,15 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
     async ({ path }) => {
       try {
         const abs = safeResolve(ws, path);
-        const entries = readdirSync(abs, { withFileTypes: true }).map((e) => ({
+        const all = readdirSync(abs, { withFileTypes: true });
+        const cap = ctx.config.policy.files.listMaxEntries;
+        const entries = all.slice(0, cap).map((e) => ({
           name: e.name,
           type: e.isDirectory() ? "dir" : "file",
         }));
         ctx.audit.record({ tool: "list_dir", decision: "allow", args: { path } });
-        return ok(JSON.stringify(entries, null, 2));
+        const note = all.length > cap ? `\n… lista truncada em ${cap} de ${all.length} itens` : "";
+        return ok(JSON.stringify(entries, null, 2) + note);
       } catch (e) {
         return fail(String((e as Error).message));
       }
@@ -124,6 +79,11 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
     async ({ path }) => {
       try {
         const abs = safeResolve(ws, path);
+        const st = statSync(abs);
+        const max = ctx.config.policy.files.maxReadBytes;
+        if (st.size > max) {
+          return fail(`Arquivo muito grande (${st.size} > limite ${max} bytes). Leia em partes.`);
+        }
         const text = readFileSync(abs, "utf8");
         ctx.audit.record({ tool: "read_file", decision: "allow", args: { path } });
         return ok(text);
@@ -133,14 +93,12 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
     }
   );
 
-  // ── SIDE EFFECTS (passam pelo portão de aprovação) ─────────────────
-
   server.registerTool(
     "write_file",
     {
       title: "Escrever arquivo",
       description:
-        "Cria ou sobrescreve um arquivo de texto no workspace. Cria diretórios pais automaticamente. Sujeito a política e aprovação.",
+        "Cria ou sobrescreve um arquivo de texto no workspace. Cria diretórios pais. Sujeito a política e aprovação.",
       inputSchema: {
         path: z.string().describe("Caminho relativo ao workspace"),
         content: z.string().describe("Conteúdo completo do arquivo"),
@@ -255,7 +213,7 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Criar esqueleto de projeto",
       description:
-        "Cria uma pasta de projeto com múltiplos arquivos de uma vez. Passe um objeto files { 'caminho/arquivo': 'conteúdo' }. Sujeito a aprovação.",
+        "Cria uma pasta de projeto com múltiplos arquivos de uma vez. files = { 'caminho': 'conteúdo' }. Sujeito a aprovação.",
       inputSchema: {
         name: z.string().describe("Nome da pasta do projeto (dentro do workspace)"),
         files: z.record(z.string()).describe("Mapa caminho→conteúdo, relativo à pasta do projeto"),
@@ -263,12 +221,11 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
       },
     },
     async ({ name, files, confirm_token }) => {
-      const core = { name, files };
       try {
         const projAbs = safeResolve(ws, name);
         for (const rel of Object.keys(files)) {
-          const abs = safeResolve(ws, join(name, rel)); // valida cada caminho
-          const dec = ctx.policy.checkWriteTarget(abs, Buffer.byteLength(files[rel]));
+          safeResolve(ws, join(name, rel)); // valida cada caminho
+          const dec = ctx.policy.checkWriteTarget(rel, Buffer.byteLength(files[rel]));
           if (!dec.ok) return fail(`Bloqueado (${rel}): ${dec.reason}`);
         }
         const g = gate(ctx, "create_project", { name, files: Object.keys(files) }, confirm_token);
@@ -285,56 +242,4 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
       }
     }
   );
-
-  // ── SHELL (opcional, allowlist + aprovação) ────────────────────────
-
-  if (ctx.config.allowShell) {
-    server.registerTool(
-      "run_command",
-      {
-        title: "Rodar comando",
-        description:
-          "Executa UM comando (sem encadeamento) dentro do workspace. Só binários da allowlist em config/policy.json. Sujeito a aprovação.",
-        inputSchema: {
-          command: z.string().describe("Comando único, ex: 'npm install' ou 'python main.py'"),
-          cwd: z.string().default(".").describe("Diretório de trabalho, relativo ao workspace"),
-          confirm_token: z.string().optional(),
-        },
-      },
-      async ({ command, cwd, confirm_token }) => {
-        const core = { command, cwd };
-        try {
-          const decision = ctx.policy.checkCommand(command);
-          if (!decision.ok) {
-            ctx.audit.record({ tool: "run_command", decision: "deny", args: core, detail: decision.reason });
-            return fail(`Bloqueado pela política: ${decision.reason}`);
-          }
-          const workdir = safeResolve(ws, cwd);
-          const g = gate(ctx, "run_command", core, confirm_token);
-          if (!g.proceed) return g.result;
-
-          const [bin, ...args] = command.trim().split(/\s+/);
-          const r = spawnSync(bin, args, {
-            cwd: workdir,
-            timeout: ctx.policy.shellTimeoutMs,
-            maxBuffer: ctx.policy.shellMaxOutput,
-            shell: true,
-            encoding: "utf8",
-          });
-          ctx.audit.record({ tool: "run_command", decision: "executed", args: core, detail: `exit=${r.status}` });
-          const out = [
-            `exit code: ${r.status}`,
-            r.stdout ? `--- stdout ---\n${r.stdout}` : "",
-            r.stderr ? `--- stderr ---\n${r.stderr}` : "",
-          ]
-            .filter(Boolean)
-            .join("\n");
-          return ok(out || "(sem saída)");
-        } catch (e) {
-          ctx.audit.record({ tool: "run_command", decision: "error", args: core, detail: String((e as Error).message) });
-          return fail(String((e as Error).message));
-        }
-      }
-    );
-  }
 }

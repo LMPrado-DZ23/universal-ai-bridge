@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { safeResolve, display } from "../src/security/paths.js";
 
 const ws = resolve("/tmp/ai-workspace");
@@ -33,5 +35,37 @@ describe("display", () => {
   it("mostra caminho relativo com barras normais", () => {
     expect(display(ws, resolve(ws, "a/b.txt"))).toBe("a/b.txt");
     expect(display(ws, ws)).toBe(".");
+  });
+});
+
+describe("safeResolve + symlink real (jaula real)", () => {
+  it("bloqueia symlink dentro do workspace que aponta para fora", () => {
+    const root = mkdtempSync(join(tmpdir(), "uab-"));
+    const realWs = join(root, "ws");
+    const outside = join(root, "outside");
+    mkdirSync(realWs, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, "secret.txt"), "top secret");
+
+    let canSymlink = true;
+    try {
+      // symlink de diretório: ws/link -> outside
+      symlinkSync(outside, join(realWs, "link"), "junction");
+    } catch {
+      try {
+        symlinkSync(outside, join(realWs, "link"));
+      } catch {
+        canSymlink = false; // sem privilégio (Windows sem dev mode): pula
+      }
+    }
+    if (!canSymlink) {
+      rmSync(root, { recursive: true, force: true });
+      return;
+    }
+
+    // Lexicalmente parece dentro, mas o caminho REAL escapa → deve lançar.
+    expect(() => safeResolve(realWs, "link/secret.txt")).toThrow();
+
+    rmSync(root, { recursive: true, force: true });
   });
 });

@@ -38,11 +38,12 @@ export class PolicyEngine {
       }
     }
 
-    // Primeiro token = binário. Bloqueia encadeamento (; | && || ` $()).
-    if (/[;`]|\|\||&&|\$\(|\|/.test(command)) {
+    // Primeiro token = binário. Bloqueia encadeamento e redirecionamento
+    // (; | && || ` $() < >).
+    if (/[;`<>]|\|\||&&|\$\(|\|/.test(command)) {
       return {
         ok: false,
-        reason: "Encadeamento de comandos não é permitido (rode um comando por vez)",
+        reason: "Encadeamento/redirecionamento não é permitido (rode um comando por vez, sem > < | && ;)",
       };
     }
 
