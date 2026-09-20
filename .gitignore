@@ -5,3 +5,5 @@ audit/*.jsonl
 workspace/
 *.log
 installer/Output/
+admin.secret
+*.secret
