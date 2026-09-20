@@ -73,20 +73,99 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
     "read_file",
     {
       title: "Ler arquivo",
-      description: "Lê o conteúdo de um arquivo de texto dentro do workspace.",
+      description:
+        "Lê um arquivo de texto do workspace. Suporta leitura parcial: offset_lines/limit_lines " +
+        "(fatia) ou tail_lines (últimas N linhas) para arquivos grandes.",
+      inputSchema: {
+        path: z.string().describe("Caminho relativo ao workspace"),
+        offset_lines: z.number().int().min(0).optional().describe("Linha inicial (0-based)"),
+        limit_lines: z.number().int().min(1).optional().describe("Máximo de linhas a partir de offset_lines"),
+        tail_lines: z.number().int().min(1).optional().describe("Retorna as últimas N linhas"),
+      },
+    },
+    async ({ path, offset_lines, limit_lines, tail_lines }) => {
+      try {
+        const abs = safeResolve(ws, path);
+        const st = statSync(abs);
+        const max = ctx.config.policy.files.maxReadBytes;
+        const partial = tail_lines !== undefined || offset_lines !== undefined || limit_lines !== undefined;
+        if (st.size > max && !partial) {
+          return fail(`Arquivo muito grande (${st.size} > limite ${max} bytes). Use tail_lines ou offset_lines/limit_lines.`);
+        }
+        if (st.size > max * 8) {
+          return fail(`Arquivo grande demais para ler em memória (${st.size} bytes).`);
+        }
+        let text = readFileSync(abs, "utf8");
+        if (partial) {
+          const lines = text.split(/\r?\n/);
+          let slice: string[];
+          if (tail_lines !== undefined) {
+            slice = lines.slice(Math.max(0, lines.length - tail_lines));
+          } else {
+            const start = offset_lines ?? 0;
+            const end = limit_lines !== undefined ? start + limit_lines : lines.length;
+            slice = lines.slice(start, end);
+          }
+          text = slice.join("\n");
+        }
+        ctx.audit.record({ tool: "read_file", decision: "allow", args: { path } });
+        return ok(text);
+      } catch (e) {
+        return fail(String((e as Error).message));
+      }
+    }
+  );
+
+  server.registerTool(
+    "read_multiple_files",
+    {
+      title: "Ler vários arquivos",
+      description: "Lê vários arquivos de texto do workspace de uma vez.",
+      inputSchema: { paths: z.array(z.string()).describe("Caminhos relativos ao workspace") },
+    },
+    async ({ paths }) => {
+      const max = ctx.config.policy.files.maxReadBytes;
+      const parts: string[] = [];
+      for (const p of paths) {
+        try {
+          const abs = safeResolve(ws, p);
+          const st = statSync(abs);
+          if (st.size > max) parts.push(`===== ${p} =====\n[pulado: ${st.size} bytes > limite]`);
+          else parts.push(`===== ${p} =====\n${readFileSync(abs, "utf8")}`);
+        } catch (e) {
+          parts.push(`===== ${p} =====\n[erro: ${(e as Error).message}]`);
+        }
+      }
+      ctx.audit.record({ tool: "read_multiple_files", decision: "allow", args: { count: paths.length } });
+      return ok(parts.join("\n\n"));
+    }
+  );
+
+  server.registerTool(
+    "get_file_info",
+    {
+      title: "Info de arquivo/pasta",
+      description: "Metadados de um caminho: tipo, tamanho, datas de criação/modificação.",
       inputSchema: { path: z.string().describe("Caminho relativo ao workspace") },
     },
     async ({ path }) => {
       try {
         const abs = safeResolve(ws, path);
         const st = statSync(abs);
-        const max = ctx.config.policy.files.maxReadBytes;
-        if (st.size > max) {
-          return fail(`Arquivo muito grande (${st.size} > limite ${max} bytes). Leia em partes.`);
-        }
-        const text = readFileSync(abs, "utf8");
-        ctx.audit.record({ tool: "read_file", decision: "allow", args: { path } });
-        return ok(text);
+        return ok(
+          JSON.stringify(
+            {
+              path,
+              type: st.isDirectory() ? "dir" : st.isFile() ? "file" : "other",
+              size: st.size,
+              created: st.birthtime.toISOString(),
+              modified: st.mtime.toISOString(),
+              accessed: st.atime.toISOString(),
+            },
+            null,
+            2
+          )
+        );
       } catch (e) {
         return fail(String((e as Error).message));
       }
@@ -136,26 +215,46 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
         "Substitui a primeira ocorrência exata de old_text por new_text num arquivo existente. Sujeito a aprovação.",
       inputSchema: {
         path: z.string(),
-        old_text: z.string().describe("Trecho exato a substituir"),
+        old_text: z.string().describe("Trecho exato (ou regex, se is_regex) a substituir"),
         new_text: z.string().describe("Novo trecho"),
+        replace_all: z.boolean().default(false).describe("Substituir todas as ocorrências"),
+        is_regex: z.boolean().default(false).describe("Tratar old_text como expressão regular"),
         confirm_token: z.string().optional(),
       },
     },
-    async ({ path, old_text, new_text, confirm_token }) => {
-      const core = { path, old_text, new_text };
+    async ({ path, old_text, new_text, replace_all, is_regex, confirm_token }) => {
+      const core = { path, old_text, new_text, replace_all, is_regex };
       try {
         const abs = safeResolve(ws, path);
         if (!existsSync(abs)) return fail(`Arquivo não existe: ${path}`);
         const current = readFileSync(abs, "utf8");
-        if (!current.includes(old_text)) return fail("old_text não encontrado no arquivo.");
-        const next = current.replace(old_text, new_text);
+
+        let next: string;
+        let count = 0;
+        if (is_regex) {
+          let re: RegExp;
+          try {
+            re = new RegExp(old_text, replace_all ? "g" : "");
+          } catch (err) {
+            return fail(`Regex inválida: ${(err as Error).message}`);
+          }
+          count = (current.match(new RegExp(old_text, "g")) ?? []).length;
+          if (count === 0) return fail("Nenhuma ocorrência da regex encontrada.");
+          next = current.replace(re, new_text);
+        } else {
+          if (!current.includes(old_text)) return fail("old_text não encontrado no arquivo.");
+          count = current.split(old_text).length - 1;
+          next = replace_all ? current.split(old_text).join(new_text) : current.replace(old_text, new_text);
+        }
+
         const decision = ctx.policy.checkWriteTarget(path, Buffer.byteLength(next));
         if (!decision.ok) return fail(`Bloqueado pela política: ${decision.reason}`);
         const g = gate(ctx, "edit_file", core, confirm_token);
         if (!g.proceed) return g.result;
         writeFileSync(abs, next, "utf8");
         ctx.audit.record({ tool: "edit_file", decision: "executed", args: sanitizeArgs(core) });
-        return ok(`✔ Editado: ${display(ws, abs)}`);
+        const applied = replace_all ? `${count} ocorrência(s)` : "1 ocorrência";
+        return ok(`✔ Editado (${applied}): ${display(ws, abs)}`);
       } catch (e) {
         return fail(String((e as Error).message));
       }

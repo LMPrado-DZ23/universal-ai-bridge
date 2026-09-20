@@ -6,17 +6,21 @@ workspace jaulado** — nunca fora dele.
 
 ## Ferramentas
 
-**Arquivos (sempre disponíveis)**
+**Arquivos e busca (sempre disponíveis)**
 - `get_workspace_info` — orientação inicial (raiz, modo, aprovação, shell/docker).
-- `list_dir` · `read_file` · `write_file` · `edit_file` · `make_dir` · `move_path` · `create_project`.
+- `list_dir` · `read_file` (offset_lines/limit_lines/tail_lines p/ arquivos grandes) · `read_multiple_files` · `get_file_info`.
+- `write_file` · `edit_file` (replace_all, is_regex) · `make_dir` · `move_path` · `create_project`.
+- `search_files` (por nome) · `search_content` (grep/regex dentro dos arquivos).
 
-**Terminal (só quando `shell_enabled: true`)**
+**Terminal e processos (só quando `shell_enabled: true`)**
 - `run_command` — comando curto e síncrono; espera terminar e devolve a saída.
 - `run_job` — inicia um comando longo e devolve `job_id` na hora.
 - `job_status` — estado de um job (ou lista todos).
 - `job_output` — saída incremental; passe os cursores retornados para "streamar".
 - `job_write` — envia texto ao stdin de um job (processos interativos).
 - `job_cancel` — encerra o job e toda a árvore de processos.
+- `list_processes` — lista processos do sistema (filtro opcional).
+- `kill_process` — encerra um processo pelo PID (e sua árvore).
 
 **Docker (só quando `docker_enabled: true`, modo admin)**
 - `docker` — roda `docker <args>` como job (ex.: `build -t app .`, `compose up -d`).

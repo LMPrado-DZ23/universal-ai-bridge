@@ -253,11 +253,27 @@ em usuário/VM dedicados; exponha só atrás de VPN/Access; gire tokens; revise 
 
 ## 14. Ferramentas
 
-**Arquivos:** `get_workspace_info`, `list_dir`, `read_file`, `write_file`,
-`edit_file`, `make_dir`, `move_path`, `create_project`.
-**Terminal:** `run_command`, `run_job`, `job_status`, `job_output`, `job_write`,
-`job_cancel`.
+**Arquivos e busca:** `get_workspace_info`, `list_dir`, `read_file` (parcial:
+offset/limit/tail), `read_multiple_files`, `get_file_info`, `write_file`,
+`edit_file` (regex / todas ocorrências), `make_dir`, `move_path`,
+`create_project`, `search_files`, `search_content` (grep).
+**Terminal e processos:** `run_command`, `run_job`, `job_status`, `job_output`,
+`job_write`, `job_cancel`, `list_processes`, `kill_process`.
 **Docker (admin):** `docker`.
+
+### Comparação com o Desktop Commander
+
+O Desktop Commander é excelente, mas só fala **stdio** (clientes locais). O
+Universal AI Bridge cobre o mesmo terreno de arquivos/terminal **e** vai além:
+
+| | Universal AI Bridge | Desktop Commander |
+|---|---|---|
+| IAs no navegador (ChatGPT/Claude.ai) | ✅ MCP remoto + túnel | ❌ só stdio |
+| Modos safe/admin + policy + audit + aprovação local | ✅ | parcial |
+| Instalador 1-clique (Windows) | ✅ | ❌ |
+| Arquivos (ler parcial, multi, info, editar regex) | ✅ | ✅ |
+| Busca por nome e conteúdo (grep) | ✅ | ✅ |
+| Jobs longos/interativos/cancel + processos | ✅ | ✅ |
 
 Fluxo de uso detalhado em [`SKILL.md`](./SKILL.md). Política em
 [`config/policy.json`](./config/policy.json).

@@ -10,7 +10,7 @@ import { registerTools } from "./tools/index.js";
 export function buildServer(config: Config): McpServer {
   const server = new McpServer({
     name: "universal-ai-bridge",
-    version: "0.2.0",
+    version: "0.3.0",
   });
 
   registerTools(server, {
