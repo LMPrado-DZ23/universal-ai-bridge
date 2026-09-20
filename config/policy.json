@@ -1,0 +1,27 @@
+{
+  "$comment": "Policy Engine determinístico. Código clássico decide; a IA só propõe.",
+  "shell": {
+    "allow": [
+      "node", "npm", "npx", "pnpm", "yarn",
+      "python", "python3", "pip",
+      "git", "tsc", "vite", "eslint", "prettier",
+      "ls", "dir", "cat", "type", "echo", "mkdir", "cd", "pwd"
+    ],
+    "deny": [
+      "rm", "rmdir", "del", "format", "mkfs",
+      "shutdown", "reboot", "diskpart",
+      "reg", "netsh", "sc",
+      "curl", "wget", "iwr", "invoke-webrequest",
+      "ssh", "scp", "sudo", "runas"
+    ],
+    "denyPatterns": [
+      "rm\\s+-rf", "rd\\s+/s", "del\\s+/s", ">\\s*/dev/", ":(){", "drop\\s+table", "drop\\s+database", "truncate\\s+table", "\\bformat\\b"
+    ],
+    "maxOutputBytes": 200000,
+    "timeoutMs": 120000
+  },
+  "files": {
+    "deniedExtensions": [".exe", ".dll", ".sys", ".msi", ".scr", ".bat", ".cmd", ".ps1"],
+    "maxWriteBytes": 5000000
+  }
+}
