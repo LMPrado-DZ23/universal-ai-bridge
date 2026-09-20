@@ -67,13 +67,14 @@ export class JobManager {
    * para resolver binários como npm/npx no Windows — como a política já barrou
    * `; | && || \` $() < >`, o shell recebe um único binário + argumentos simples.
    */
-  start(command: string, cwd: string): string {
+  start(command: string, cwd: string, extraEnv?: Record<string, string>): string {
     const id = randomBytes(6).toString("hex");
     const child = spawn(command, {
       cwd,
       shell: true,
       detached: !IS_WIN, // POSIX: novo grupo p/ matar a árvore
       windowsHide: true,
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
     });
 
     const job: Job = {

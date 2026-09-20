@@ -66,4 +66,29 @@ export class PolicyEngine {
   get shellMaxOutput(): number {
     return this.policy.shell.maxOutputBytes;
   }
+
+  /** Visão somente-leitura da política de shell (para inspeção). */
+  snapshot(): { allow: string[]; deny: string[]; denyPatterns: string[] } {
+    return {
+      allow: [...this.policy.shell.allow],
+      deny: [...this.policy.shell.deny],
+      denyPatterns: [...this.policy.shell.denyPatterns],
+    };
+  }
+
+  /** Adiciona um binário à allowlist em runtime. Nunca sobrepõe a denylist. */
+  addAllow(bin: string): Decision {
+    const b = bin.trim().toLowerCase();
+    if (!/^[a-z0-9._-]+$/.test(b)) return { ok: false, reason: "Nome de binário inválido." };
+    if (this.policy.shell.deny.includes(b)) return { ok: false, reason: `"${b}" está na denylist e não pode ser liberado.` };
+    if (!this.policy.shell.allow.includes(b)) this.policy.shell.allow.push(b);
+    return { ok: true };
+  }
+
+  /** Remove um binário da allowlist em runtime. */
+  removeAllow(bin: string): Decision {
+    const b = bin.trim().toLowerCase();
+    this.policy.shell.allow = this.policy.shell.allow.filter((x) => x !== b);
+    return { ok: true };
+  }
 }

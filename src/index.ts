@@ -3,6 +3,7 @@ import { loadConfig } from "./config.js";
 import { startStdio } from "./transports/stdio.js";
 import { startHttp } from "./transports/http.js";
 import { JobManager } from "./jobs.js";
+import { Watcher } from "./watch.js";
 
 function parseTransport(): "stdio" | "http" {
   const idx = process.argv.indexOf("--transport");
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
     process.stderr.write(`[universal-ai-bridge] ${signal}: encerrando jobs e servidor…\n`);
     try {
       JobManager.killAllEverywhere();
+      Watcher.stopAllEverywhere();
     } catch {
       /* ignore */
     }

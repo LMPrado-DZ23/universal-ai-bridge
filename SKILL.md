@@ -11,6 +11,9 @@ workspace jaulado** — nunca fora dele.
 - `list_dir` · `read_file` (offset_lines/limit_lines/tail_lines p/ arquivos grandes) · `read_multiple_files` · `get_file_info`.
 - `write_file` · `edit_file` (replace_all, is_regex) · `make_dir` · `move_path` · `create_project`.
 - `search_files` (por nome) · `search_content` (grep/regex dentro dos arquivos).
+- `read_media_file` (imagem/binário → imagem ou base64).
+- `watch_start` · `watch_poll` · `watch_stop` (monitorar mudanças em arquivos).
+- `get_policy` (ver allowlist/denylist e modo).
 
 **Terminal e processos (só quando `shell_enabled: true`)**
 - `run_command` — comando curto e síncrono; espera terminar e devolve a saída.
@@ -21,6 +24,12 @@ workspace jaulado** — nunca fora dele.
 - `job_cancel` — encerra o job e toda a árvore de processos.
 - `list_processes` — lista processos do sistema (filtro opcional).
 - `kill_process` — encerra um processo pelo PID (e sua árvore).
+- `set_env` · `unset_env` · `list_env` — variáveis de ambiente da sessão (aplicadas a run_command/run_job).
+
+**Modo admin**
+- `docker` — roda `docker <args>` como job.
+- `manage_allowlist` — adiciona/remove binário da allowlist (nunca libera a denylist).
+- `download_to_file` — baixa uma URL http(s) pública para o workspace (bloqueia IP privado/loopback).
 
 **Docker (só quando `docker_enabled: true`, modo admin)**
 - `docker` — roda `docker <args>` como job (ex.: `build -t app .`, `compose up -d`).

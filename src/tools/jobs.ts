@@ -35,7 +35,7 @@ export function registerJobTools(server: McpServer, ctx: Ctx): void {
         const workdir = safeResolve(ctx.config.workspace, cwd);
         const g = gate(ctx, "run_job", core, confirm_token);
         if (!g.proceed) return g.result;
-        const id = ctx.jobs.start(command, workdir);
+        const id = ctx.jobs.start(command, workdir, ctx.sessionEnv);
         ctx.audit.record({ tool: "run_job", decision: "executed", args: core, detail: `job=${id}` });
         return ok(`✔ Job iniciado: ${id}\nUse job_output com job_id="${id}" para acompanhar.`);
       } catch (e) {

@@ -254,12 +254,14 @@ em usuário/VM dedicados; exponha só atrás de VPN/Access; gire tokens; revise 
 ## 14. Ferramentas
 
 **Arquivos e busca:** `get_workspace_info`, `list_dir`, `read_file` (parcial:
-offset/limit/tail), `read_multiple_files`, `get_file_info`, `write_file`,
-`edit_file` (regex / todas ocorrências), `make_dir`, `move_path`,
+offset/limit/tail), `read_multiple_files`, `get_file_info`, `read_media_file`,
+`write_file`, `edit_file` (regex / todas ocorrências), `make_dir`, `move_path`,
 `create_project`, `search_files`, `search_content` (grep).
+**Monitoramento e política:** `watch_start`, `watch_poll`, `watch_stop`, `get_policy`.
 **Terminal e processos:** `run_command`, `run_job`, `job_status`, `job_output`,
-`job_write`, `job_cancel`, `list_processes`, `kill_process`.
-**Docker (admin):** `docker`.
+`job_write`, `job_cancel`, `list_processes`, `kill_process`, `set_env`,
+`unset_env`, `list_env`.
+**Modo admin:** `docker`, `manage_allowlist`, `download_to_file`.
 
 ### Comparação com o Desktop Commander
 

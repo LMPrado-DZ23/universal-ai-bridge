@@ -43,6 +43,7 @@ export function registerShellTools(server: McpServer, ctx: Ctx): void {
           shell: true,
           windowsHide: true,
           encoding: "utf8",
+          env: { ...process.env, ...ctx.sessionEnv },
         });
         ctx.audit.record({ tool: "run_command", decision: "executed", args: core, detail: `exit=${r.status}` });
         const out = [

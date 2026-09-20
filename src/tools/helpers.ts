@@ -3,6 +3,7 @@ import { PolicyEngine } from "../policy/engine.js";
 import { ConfirmStore } from "../confirm.js";
 import { Audit, sanitizeArgs } from "../audit/log.js";
 import { JobManager } from "../jobs.js";
+import type { Watcher } from "../watch.js";
 
 export interface Ctx {
   config: Config;
@@ -10,6 +11,9 @@ export interface Ctx {
   confirm: ConfirmStore;
   audit: Audit;
   jobs: JobManager;
+  watcher: Watcher;
+  /** Variáveis de ambiente por sessão, aplicadas a run_command/run_job. */
+  sessionEnv: Record<string, string>;
 }
 
 export const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
