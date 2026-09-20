@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 // Testa search_files/search_content/read parcial via HTTP real (modo safe).
 const distEntry = resolve(__dirname, "..", "dist", "index.js");
 const PORT = 8990 + Math.floor(Math.random() * 9);
-const TOKEN = "tok-search";
+const TOKEN = "tok-search-0123456789abcdef";
 const BASE = `http://127.0.0.1:${PORT}`;
 let srv: ChildProcess | undefined;
 let ws: string;
@@ -93,5 +93,26 @@ describe("superset: busca e leitura", () => {
     const info = JSON.parse(out);
     expect(info.type).toBe("file");
     expect(info.size).toBeGreaterThan(0);
+  });
+
+  it("search_content NÃO lê symlink apontando para fora do workspace (C3)", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "uab-out-"));
+    fs.writeFileSync(path.join(outside, "secret.txt"), "SEGREDO_EXTERNO_XYZ");
+    let linked = true;
+    try {
+      fs.symlinkSync(path.join(outside, "secret.txt"), path.join(ws, "link.txt"));
+    } catch {
+      linked = false; // sem privilégio de symlink (Windows sem dev mode)
+    }
+    if (!linked) {
+      fs.rmSync(outside, { recursive: true, force: true });
+      return;
+    }
+    const out = await call("search_content", { query: "SEGREDO_EXTERNO_XYZ" });
+    expect(out).not.toContain("SEGREDO_EXTERNO_XYZ");
+    fs.rmSync(outside, { recursive: true, force: true });
   });
 });

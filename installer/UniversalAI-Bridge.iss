@@ -3,7 +3,7 @@
 ; Requer os arquivos do app já buildados em ..\dist e ..\node_modules (prod).
 
 #define AppName "Universal AI Bridge"
-#define AppVersion "0.2.0"
+#define AppVersion "0.4.1"
 #define Publisher "Universal AI Bridge"
 #define ExpectedPhrase "I_UNDERSTAND_FULL_PC_ACCESS"
 

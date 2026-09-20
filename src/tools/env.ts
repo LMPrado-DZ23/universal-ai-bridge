@@ -6,6 +6,13 @@ import { ok, fail, type Ctx } from "./helpers.js";
  * Variáveis de ambiente por sessão, aplicadas a run_command/run_job.
  * Domínio de terminal → só quando allowShell está ligado.
  */
+// Variáveis que mudam resolução/carregamento e poderiam sequestrar processos.
+const BLOCKED_ENV = new Set([
+  "PATH", "PATHEXT", "COMSPEC", "NODE_OPTIONS", "LD_PRELOAD", "LD_LIBRARY_PATH",
+  "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH", "PYTHONPATH", "PYTHONSTARTUP",
+  "BRIDGE_TOKEN", "BRIDGE_ADMIN_ACK", "BRIDGE_MODE", "BRIDGE_ENV_FILE",
+]);
+
 export function registerEnvTools(server: McpServer, ctx: Ctx): void {
   if (!ctx.config.allowShell) return;
 
@@ -17,6 +24,10 @@ export function registerEnvTools(server: McpServer, ctx: Ctx): void {
       inputSchema: { name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Nome inválido"), value: z.string() },
     },
     async ({ name, value }) => {
+      if (BLOCKED_ENV.has(name.toUpperCase())) {
+        ctx.audit.record({ tool: "set_env", decision: "deny", args: { name } });
+        return fail(`Variável "${name}" é bloqueada (afeta resolução/carregamento de processos).`);
+      }
       ctx.sessionEnv[name] = value;
       ctx.audit.record({ tool: "set_env", decision: "executed", args: { name } });
       return ok(`✔ ${name} definido para a sessão.`);

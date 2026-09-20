@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 // Modo ADMIN + aprovação auto para exercitar env/allowlist/download/watch/media.
 const distEntry = resolve(__dirname, "..", "dist", "index.js");
 const PORT = 8960 + Math.floor(Math.random() * 9);
-const TOKEN = "tok-stage2";
+const TOKEN = "tok-stage2-0123456789abcdef";
 const BASE = `http://127.0.0.1:${PORT}`;
 let srv: ChildProcess | undefined;
 let ws: string;
@@ -111,6 +111,23 @@ describe("Etapa 2 (admin)", () => {
     await call("watch_stop", { watch_id: wid });
     expect(events.length).toBeGreaterThan(0);
   }, 10000);
+
+  it("run_command bloqueia '&' e newline no endpoint MCP real (C1)", async () => {
+    const amp = await call("run_command", { command: 'echo SAFE & node -e "console.log(1)"', cwd: "." });
+    expect(amp.isError).toBe(true);
+    const nl = await call("run_command", { command: "echo SAFE\nnode -e 1", cwd: "." });
+    expect(nl.isError).toBe(true);
+  });
+
+  it("set_env bloqueia variáveis perigosas (C8)", async () => {
+    const res = await call("set_env", { name: "NODE_OPTIONS", value: "--inspect" });
+    expect(res.isError).toBe(true);
+  });
+
+  it("kill_process recusa PID externo sem allow_external (C7)", async () => {
+    const res = await call("kill_process", { pid: 999999 });
+    expect(res.isError).toBe(true);
+  });
 
   it("download_to_file bloqueia destino privado/loopback (SSRF)", async () => {
     const res = await call("download_to_file", { url: "http://127.0.0.1:1/x", dest: "x.bin" });

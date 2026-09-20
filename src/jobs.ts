@@ -123,6 +123,14 @@ export class JobManager {
     return j;
   }
 
+  /** true se o PID pertence a um job iniciado por este manager. */
+  ownsPid(pid: number): boolean {
+    for (const j of this.jobs.values()) {
+      if (j.child.pid === pid) return true;
+    }
+    return false;
+  }
+
   view(id: string): JobView {
     const j = this.get(id);
     return {

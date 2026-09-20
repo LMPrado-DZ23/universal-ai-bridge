@@ -6,6 +6,52 @@ export interface Decision {
   reason?: string;
 }
 
+/** true se o texto contém qualquer caractere de controle (exceto whitespace comum não-perigoso). */
+function hasControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    // Bloqueia 0x00-0x1F (inclui \n \r \t) e 0x7F. Espaço (0x20) é permitido.
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * Detector determinístico e ciente de aspas de construções de shell que
+ * permitiriam encadeamento, redirecionamento, subshell ou expansão. Retorna a
+ * razão da rejeição, ou null se o comando é uma linha única segura.
+ * Estados: 'none' (fora de aspas), 'single' (''), 'double' ("").
+ */
+export function scanShellUnsafe(command: string): string | null {
+  if (hasControlChar(command)) {
+    return "Caracteres de controle (quebra de linha, CR, tab, etc.) não são permitidos.";
+  }
+  let state: "none" | "single" | "double" = "none";
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (state === "single") {
+      if (c === "'") state = "none";
+      continue;
+    }
+    if (state === "double") {
+      if (c === '"') state = "none";
+      else if (c === "`") return "Crase (command substitution) não é permitida.";
+      else if (c === "$") return "Expansão ($) dentro de aspas duplas não é permitida — use aspas simples.";
+      continue;
+    }
+    // state === "none"
+    if (c === "'") state = "single";
+    else if (c === '"') state = "double";
+    else if (c === "`") return "Crase (command substitution) não é permitida.";
+    else if (c === "$") return "Expansão ($) não é permitida fora de aspas simples.";
+    else if (";|&<>()".includes(c)) {
+      return `Metacaractere de shell "${c}" não é permitido fora de aspas — rode um comando por vez.`;
+    }
+  }
+  if (state !== "none") return "Aspas não fechadas no comando.";
+  return null;
+}
+
 /**
  * Policy Engine 100% determinístico (sem IA). O modelo propõe; este código decide.
  */
@@ -38,14 +84,12 @@ export class PolicyEngine {
       }
     }
 
-    // Primeiro token = binário. Bloqueia encadeamento e redirecionamento
-    // (; | && || ` $() < >).
-    if (/[;`<>]|\|\||&&|\$\(|\|/.test(command)) {
-      return {
-        ok: false,
-        reason: "Encadeamento/redirecionamento não é permitido (rode um comando por vez, sem > < | && ;)",
-      };
-    }
+    // Scanner ciente de aspas: metacaracteres só são perigosos FORA de aspas;
+    // `$` e crase são perigosos exceto dentro de aspas simples. Assim,
+    // `node -e "console.log(1>0)"` é permitido, mas `echo x & node ...`,
+    // `> arquivo`, `$( )` e crase não. Guardrail determinístico, não sandbox.
+    const unsafe = scanShellUnsafe(command);
+    if (unsafe) return { ok: false, reason: unsafe };
 
     const bin = normalized.split(/\s+/)[0].replace(/\.exe$/, "");
     if (this.policy.shell.deny.includes(bin)) {

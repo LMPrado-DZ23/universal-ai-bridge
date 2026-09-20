@@ -51,10 +51,35 @@ export function applyEnvFile(path: string): boolean {
   }
 }
 
+const PLACEHOLDER_TOKENS = new Set([
+  "troque-por-um-token-aleatorio-forte",
+  "changeme",
+  "token",
+]);
+
 function parseApproval(v: string | undefined): ApprovalMode {
-  if (v === "auto") return "auto";
-  if (v === "local") return "local";
-  return "confirm"; // padrão seguro
+  if (v === undefined || v === "") return "confirm";
+  if (v === "auto" || v === "confirm" || v === "local") return v;
+  throw new Error(`BRIDGE_APPROVAL inválido: "${v}". Use auto, confirm ou local.`);
+}
+
+function parsePort(v: string | undefined): number {
+  const n = Number(v ?? 8787);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    throw new Error(`BRIDGE_PORT inválido: "${v}". Use um inteiro entre 1 e 65535.`);
+  }
+  return n;
+}
+
+/** Valida o token (quando presente). HTTP sem token é recusado no transporte. */
+function validateToken(token: string | undefined): void {
+  if (token === undefined || token === "") return;
+  if (PLACEHOLDER_TOKENS.has(token.toLowerCase()) || token.length < 16) {
+    throw new Error(
+      "BRIDGE_TOKEN fraco ou placeholder. Gere um token forte (>=16 chars): " +
+        'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
+    );
+  }
 }
 
 function loadPolicy(): PolicyFile {
@@ -72,6 +97,9 @@ export function resolveMode(env: NodeJS.ProcessEnv = process.env): {
   allowShell: boolean;
   allowDocker: boolean;
 } {
+  if (env.BRIDGE_MODE !== undefined && env.BRIDGE_MODE !== "" && env.BRIDGE_MODE !== "safe" && env.BRIDGE_MODE !== "admin") {
+    throw new Error(`BRIDGE_MODE inválido: "${env.BRIDGE_MODE}". Use safe ou admin.`);
+  }
   const wantsAdmin = env.BRIDGE_MODE === "admin";
   const acked = env.BRIDGE_ADMIN_ACK === ADMIN_ACK_PHRASE;
 
@@ -125,11 +153,13 @@ export function loadConfig(): Config {
     ? resolve(process.env.BRIDGE_DATA_DIR, "audit")
     : resolve(projectRoot, "audit");
 
+  validateToken(process.env.BRIDGE_TOKEN);
+
   return {
     mode,
     workspace,
     token: process.env.BRIDGE_TOKEN,
-    port: Number(process.env.BRIDGE_PORT ?? 8787),
+    port: parsePort(process.env.BRIDGE_PORT),
     allowedOrigins: csv(process.env.BRIDGE_ALLOWED_ORIGINS),
     allowedHosts: csv(process.env.BRIDGE_ALLOWED_HOSTS),
     approval: parseApproval(process.env.BRIDGE_APPROVAL),

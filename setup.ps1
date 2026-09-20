@@ -16,7 +16,7 @@ if (-not (Test-Path $envPath)) {
   [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
   $token = -join ($bytes | ForEach-Object { $_.ToString('x2') })
   $ws = Join-Path $PSScriptRoot "workspace"
-  @"
+  $envContent = @"
 BRIDGE_MODE=safe
 BRIDGE_ADMIN_ACK=
 BRIDGE_TOKEN=$token
@@ -26,7 +26,9 @@ BRIDGE_WORKSPACE=$ws
 BRIDGE_APPROVAL=confirm
 BRIDGE_ALLOW_SHELL=false
 BRIDGE_ALLOW_DOCKER=false
-"@ | Set-Content -Path $envPath -Encoding UTF8
+"@
+  # UTF-8 SEM BOM (um BOM na 1a linha corromperia BRIDGE_MODE).
+  [System.IO.File]::WriteAllText($envPath, $envContent, (New-Object System.Text.UTF8Encoding($false)))
   Write-Host "    .env criado (modo SAFE). Token gerado com sucesso." -ForegroundColor Green
 } else {
   Write-Host "==> .env ja existe, mantido." -ForegroundColor Yellow

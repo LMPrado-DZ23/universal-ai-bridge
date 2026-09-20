@@ -52,6 +52,18 @@ describe("PolicyEngine.checkCommand", () => {
     expect(e.checkCommand("python x.py < input").ok).toBe(false);
   });
 
+  it("nega '&' (bypass C1) e subshell", () => {
+    expect(e.checkCommand('echo SAFE & node -e "x"').ok).toBe(false);
+    expect(e.checkCommand("node -e $(whoami)").ok).toBe(false);
+    expect(e.checkCommand("echo `id`").ok).toBe(false);
+  });
+
+  it("nega caracteres de controle (newline/CR) — bypass C1", () => {
+    expect(e.checkCommand("echo A\nnode -e x").ok).toBe(false);
+    expect(e.checkCommand("echo A\r\nnode -e x").ok).toBe(false);
+    expect(e.checkCommand("echo A\tB").ok).toBe(false); // qualquer controle é bloqueado (mais seguro)
+  });
+
   it("nega comando vazio", () => {
     expect(e.checkCommand("   ").ok).toBe(false);
   });

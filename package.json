@@ -1,6 +1,6 @@
 {
   "name": "universal-ai-bridge",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Um servidor MCP local (stdio + Streamable HTTP) que deixa qualquer IA no navegador (ChatGPT, Claude.ai) ou local (Claude Desktop, Cursor, Gemini CLI) criar e executar projetos no seu PC com policy engine, jaula de workspace, auth e audit log.",
   "type": "module",
   "bin": {

@@ -57,12 +57,27 @@ export function registerProcessTools(server: McpServer, ctx: Ctx): void {
     "kill_process",
     {
       title: "Encerrar processo",
-      description: "Encerra um processo do sistema pelo PID (e sua árvore). Sujeito a aprovação.",
-      inputSchema: { pid: z.number().int().positive(), confirm_token: z.string().optional() },
+      description:
+        "Encerra um processo pelo PID (e sua árvore). Por padrão só mata processos iniciados pelo bridge; " +
+        "para um PID externo, exige modo admin + allow_external=true. Sujeito a aprovação.",
+      inputSchema: {
+        pid: z.number().int().positive(),
+        allow_external: z.boolean().default(false).describe("Permitir matar PID que não é do bridge (só admin)"),
+        confirm_token: z.string().optional(),
+      },
     },
-    async ({ pid, confirm_token }) => {
-      const core = { pid };
+    async ({ pid, allow_external, confirm_token }) => {
+      const core = { pid, allow_external };
       try {
+        const owned = ctx.jobs.ownsPid(pid);
+        if (!owned) {
+          if (ctx.config.mode !== "admin" || !allow_external) {
+            ctx.audit.record({ tool: "kill_process", decision: "deny", args: core, detail: "PID externo" });
+            return fail(
+              `PID ${pid} não pertence ao bridge. Para matar um processo externo, use modo admin e allow_external=true.`
+            );
+          }
+        }
         const g = gate(ctx, "kill_process", core, confirm_token);
         if (!g.proceed) return g.result;
         killTree(pid);

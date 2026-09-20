@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { safeResolve } from "../security/paths.js";
+import { scanShellUnsafe } from "../policy/engine.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";
 
 /**
@@ -27,9 +28,8 @@ export function registerDockerTools(server: McpServer, ctx: Ctx): void {
     async ({ args, cwd, confirm_token }) => {
       const core = { args, cwd };
       try {
-        if (/[;`<>]|\|\||&&|\$\(|\|/.test(args)) {
-          return fail("Metacaracteres de shell não são permitidos nos argumentos do docker.");
-        }
+        const unsafe = scanShellUnsafe(`docker ${args}`);
+        if (unsafe) return fail(`docker: ${unsafe}`);
         const workdir = safeResolve(ctx.config.workspace, cwd);
         const g = gate(ctx, "docker", core, confirm_token);
         if (!g.proceed) return g.result;
