@@ -18,8 +18,8 @@ workspace jaulado** — nunca fora dele.
 - `get_policy` (ver allowlist/denylist e modo).
 
 **Terminal e processos (só quando `shell_enabled: true`)**
-- `run_command` — comando curto e síncrono; espera terminar e devolve a saída.
-- `run_job` — inicia um comando longo e devolve `job_id` na hora.
+- `run_command` — comando curto e síncrono, **sem shell**. Prefira `program` (ex.: "npm") + `args` (ex.: ["install"]); `command` ainda funciona mas é convertido por parser restrito.
+- `run_job` — inicia um comando longo (mesma API program+args) e devolve `job_id`.
 - `job_status` — estado de um job (ou lista todos).
 - `job_output` — saída incremental; passe os cursores retornados para "streamar".
 - `job_write` — envia texto ao stdin de um job (processos interativos).

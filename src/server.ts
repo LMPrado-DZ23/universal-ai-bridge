@@ -45,7 +45,7 @@ export class SessionResources {
 
 /** Fábrica: monta um McpServer novo + os recursos da sessão. */
 export function buildServer(config: Config): { server: McpServer; resources: SessionResources } {
-  const server = new McpServer({ name: "universal-ai-bridge", version: "0.6.1" });
+  const server = new McpServer({ name: "universal-ai-bridge", version: "0.7.0" });
   const resources = new SessionResources(config.policy.shell.maxOutputBytes);
 
   registerTools(server, {

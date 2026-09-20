@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { safeResolve } from "../security/paths.js";
-import { tokenize } from "../jobs.js";
+import { tokenize } from "../exec.js";
 import { loadPty } from "../pty.js";
 import { sanitizeCommand } from "../audit/log.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";

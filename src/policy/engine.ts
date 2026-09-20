@@ -104,6 +104,25 @@ export class PolicyEngine {
     return { ok: true };
   }
 
+  /**
+   * Valida um PROGRAMA (nome puro, sem shell) contra allow/denylist.
+   * Rejeita separadores de caminho: no modo safe o binário deve ser um nome
+   * resolvido pelo PATH, não um caminho arbitrário no disco.
+   */
+  checkProgram(program: string): Decision {
+    const raw = program.trim();
+    if (!raw) return { ok: false, reason: "Programa vazio" };
+    if (/[/\\:]/.test(raw)) {
+      return { ok: false, reason: "Use o nome do binário (sem caminho); ele é resolvido pelo PATH." };
+    }
+    const bin = raw.toLowerCase().replace(/\.(exe|cmd|bat|com)$/, "");
+    if (this.policy.shell.deny.includes(bin)) return { ok: false, reason: `Binário na denylist: ${bin}` };
+    if (!this.policy.shell.allow.includes(bin)) {
+      return { ok: false, reason: `Binário fora da allowlist: ${bin}. Edite config/policy.json para liberar.` };
+    }
+    return { ok: true };
+  }
+
   get shellTimeoutMs(): number {
     return this.policy.shell.timeoutMs;
   }

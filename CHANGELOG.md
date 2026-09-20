@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 — Fase 2: executor sem shell (program + args)
+
+- **Sem shell interpretado no modo safe:** `run_command` e `run_job` executam via
+  `spawn`/`spawnSync` com `shell:false`. Novo módulo `src/exec.ts`:
+  - API preferida `program` (nome do binário) + `args[]` — imune a injeção por construção.
+  - `command: string` legado é convertido por parser **restrito** (`parseCommand`:
+    rejeita `; & | < > ( ) $ crase` e controles antes de tokenizar) — nunca alimenta shell.
+  - Resolução cross-platform via PATH+PATHEXT; `.cmd`/`.bat` no Windows rodam via
+    `cmd.exe /d /s /c` com aspas externas corretas e args validados (sem `"`/`%`/controle).
+  - `PolicyEngine.checkProgram` valida o nome puro (rejeita caminhos) contra allow/denylist.
+- **Docker** usa `program="docker"` + `args[]` (ou `args_list`), sem concatenar string em shell.
+- **JobManager.start(program, args, cwd, env)** — assinatura estruturada; PTY continua
+  resolvendo o executável por PATH+PATHEXT.
+- `scanShellUnsafe` permanece como defesa do parser legado, não como única barreira.
+- 112 testes (novos em `exec.test.ts`: parser rejeita `&`/newline/`$()`; roda exe real e
+  **npm (.cmd)** com segurança; prova de que `&&echo PWNED` chega como arg literal).
+  `npm audit --omit=dev` = 0.
+
 ## 0.6.1 — Correções da 2ª auditoria (ciclo de vida, audit, config, supply-chain)
 
 - **C3 — cleanup por sessão:** cada sessão HTTP tem `SessionResources` com

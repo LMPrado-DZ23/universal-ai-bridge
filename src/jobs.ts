@@ -1,5 +1,6 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawnSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { spawnStructured } from "./exec.js";
 
 const IS_WIN = process.platform === "win32";
 
@@ -62,24 +63,16 @@ export class JobManager {
   }
 
   /**
-   * Inicia um job. `command` DEVE ter passado pela PolicyEngine.checkCommand
-   * antes (allowlist + zero metacaracteres de shell). Usamos shell:true só
-   * para resolver binários como npm/npx no Windows — como a política já barrou
-   * `; | && || \` $() < >`, o shell recebe um único binário + argumentos simples.
+   * Inicia um job com execução ESTRUTURADA (program + args[], shell:false).
+   * `program` deve ter passado por PolicyEngine.checkProgram antes.
    */
-  start(command: string, cwd: string, extraEnv?: Record<string, string>): string {
+  start(program: string, args: string[], cwd: string, extraEnv?: Record<string, string>): string {
     const id = randomBytes(6).toString("hex");
-    const child = spawn(command, {
-      cwd,
-      shell: true,
-      detached: !IS_WIN, // POSIX: novo grupo p/ matar a árvore
-      windowsHide: true,
-      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
-    });
+    const child = spawnStructured(program, args, { cwd, env: extraEnv });
 
     const job: Job = {
       id,
-      command,
+      command: `${program} ${args.join(" ")}`.trim(),
       child,
       stdout: "",
       stderr: "",
@@ -190,15 +183,4 @@ export class JobManager {
     this.killAll();
     JobManager.all.delete(this);
   }
-}
-
-/** Tokeniza um comando respeitando aspas duplas simples. */
-export function tokenize(command: string): string[] {
-  const out: string[] = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(command)) !== null) {
-    out.push(m[1] ?? m[2] ?? m[3] ?? "");
-  }
-  return out;
 }
