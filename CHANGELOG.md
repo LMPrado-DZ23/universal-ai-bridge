@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.1 — Correções da 2ª auditoria (ciclo de vida, audit, config, supply-chain)
+
+- **C3 — cleanup por sessão:** cada sessão HTTP tem `SessionResources` com
+  `dispose()` idempotente; jobs/PTYs/watchers/confirmações/env são encerrados e
+  removidos dos registros estáticos em `onclose`, `DELETE /mcp`, timeout ocioso,
+  `/admin/revoke`, `/admin/panic` e shutdown. (regressão e2e: job infinito morre
+  ao fechar a sessão).
+- **C4 — adminPort:** valida a porta admin **após** derivar o default; `BRIDGE_PORT=65535`
+  agora falha claramente (ou exige `BRIDGE_ADMIN_PORT`).
+- **C5 — audit sem segredos:** `run_command`/`run_job`/`docker`/`pty_start` gravam
+  `{program, argc, len, sha}` (nunca o comando); `download_to_file` grava
+  `{scheme, host, port, len, sha}` (sem query/fragmento); `sanitizeArgs` passa a
+  hashear qualquer string. (regressão: `TOPSECRET_AUDIT_VALUE` não aparece no log).
+- **C6 — rotação de token PERSISTENTE:** `TokenStore` grava o novo token no `.env`
+  (escrita atômica temp+rename, 0600) quando o arquivo existe → sobrevive a
+  reinícios; sem `.env`, fica em memória e `persists=false`.
+- **C9 — cloudflared:** versão fixa por padrão (não `latest`), com fallback
+  resiliente e verificação Authenticode do editor Cloudflare.
+- **C10 — parada de emergência:** `stop-access.ps1` mata **apenas os PIDs
+  registrados** do bridge (via `taskkill /T`), nunca cloudflared/node de terceiros.
+- **C8 — versões unificadas:** `package-lock.json` sincronizado; teste de CI falha
+  se package/lock/server/Inno/CHANGELOG divergirem.
+- **Fase 6 — `get_workspace_info`** não revela o caminho absoluto por padrão
+  (`include_absolute_path` opcional).
+- 98 testes (novos: adminPort, persistência de token, cleanup de sessão e2e,
+  audit-sem-segredo, consistência de versão). `npm audit --omit=dev` = 0.
+
+### Pendências honestas (fases grandes, não concluídas nesta rodada)
+- **Fase 2 completa** (executor `program`+`args[]` com `shell:false` no safe e
+  resolução cross-platform de `.cmd`): o safe ainda usa `shell:true` com o scanner
+  ciente de aspas como barreira; a migração para no-shell é o próximo passo maior.
+- **Fase 8** (edição avançada de docs, preview rico, ripgrep, auto-update,
+  device pairing na nuvem, CI multi-OS) — backlog.
+- **`human_local`** (aprovação em GUI local sem revelar código): hoje há `local`
+  (código no console local) e `confirm` (2 etapas lógicas).
+
 ## 0.6.0 — Escrita de documentos + pacote de re-auditoria
 
 - **Criação de documentos** (efeito colateral, sujeito a política/aprovação):

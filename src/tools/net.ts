@@ -4,6 +4,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, extname } from "node:path";
 import { lookup } from "node:dns/promises";
 import { safeResolve, display } from "../security/paths.js";
+import { sanitizeUrl } from "../audit/log.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";
 
 const MAX_REDIRECTS = 5;
@@ -133,11 +134,11 @@ export function registerNetTools(server: McpServer, ctx: Ctx): void {
         const buf = Buffer.concat(chunks.map((c) => Buffer.from(c)));
         mkdirSync(dirname(abs), { recursive: true });
         writeFileSync(abs, buf);
-        ctx.audit.record({ tool: "download_to_file", decision: "executed", args: core, detail: `${buf.length} bytes; ext=${extname(dest)}` });
+        ctx.audit.record({ tool: "download_to_file", decision: "executed", args: { url: sanitizeUrl(url), dest }, detail: `${buf.length} bytes; ext=${extname(dest)}` });
         return ok(`✔ Baixado ${buf.length} bytes → ${display(ctx.config.workspace, abs)}`);
       } catch (e) {
         const msg = (e as Error).name === "AbortError" ? "Timeout no download." : String((e as Error).message);
-        ctx.audit.record({ tool: "download_to_file", decision: "error", args: core, detail: msg });
+        ctx.audit.record({ tool: "download_to_file", decision: "error", args: { url: sanitizeUrl(url), dest }, detail: msg });
         return fail(msg);
       }
     }

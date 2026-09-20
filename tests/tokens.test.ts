@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { TokenStore } from "../src/security/tokens.js";
 
 describe("TokenStore", () => {
@@ -23,5 +26,27 @@ describe("TokenStore", () => {
     ts.revoke();
     expect(ts.hasToken()).toBe(false);
     expect(ts.matches("qualquer-token-123456")).toBe(false);
+  });
+
+  it("rotate PERSISTE no .env quando o arquivo existe (C6)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "uab-tok-"));
+    const envFile = join(dir, ".env");
+    writeFileSync(envFile, "BRIDGE_MODE=safe\nBRIDGE_TOKEN=token-antigo-0123456789ab\nBRIDGE_PORT=8787\n");
+    const ts = new TokenStore("token-antigo-0123456789ab", envFile);
+    expect(ts.persists).toBe(true);
+    const novo = ts.rotate();
+    const onDisk = readFileSync(envFile, "utf8");
+    expect(onDisk).toContain(`BRIDGE_TOKEN=${novo}`);
+    expect(onDisk).not.toContain("token-antigo-0123456789ab");
+    // preserva outras chaves
+    expect(onDisk).toContain("BRIDGE_MODE=safe");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("sem arquivo .env, rotate fica só em memória (persists=false)", () => {
+    const ts = new TokenStore("x".repeat(20), join(tmpdir(), "nao-existe-uab.env"));
+    expect(ts.persists).toBe(false);
+    const novo = ts.rotate();
+    expect(ts.matches(novo)).toBe(true);
   });
 });

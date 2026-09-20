@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Config } from "../config.js";
-import { buildServer } from "../server.js";
+import { buildServer, type SessionResources } from "../server.js";
 import { checkOrigin, extractToken } from "../security/auth.js";
 import { TokenStore } from "../security/tokens.js";
 import { RateLimiter } from "../security/ratelimit.js";
@@ -18,6 +18,7 @@ const SWEEP_MS = 60 * 1000;
 
 interface Entry {
   transport: StreamableHTTPServerTransport;
+  resources: SessionResources;
   lastSeen: number;
 }
 
@@ -55,19 +56,19 @@ export async function startHttp(config: Config): Promise<() => void> {
   const app = express();
   app.use(express.json({ limit: "8mb" }));
 
-  const tokens = new TokenStore(config.token);
+  const tokens = new TokenStore(config.token, config.envFile);
   const limiter = new RateLimiter();
   const sessions: Record<string, Entry> = {};
 
+  const disposeSession = (sid: string) => {
+    const e = sessions[sid];
+    if (!e) return;
+    delete sessions[sid];
+    try { e.resources.dispose(); } catch { /* ignore */ }
+    try { e.transport.close(); } catch { /* ignore */ }
+  };
   const closeAllSessions = () => {
-    for (const sid of Object.keys(sessions)) {
-      try {
-        sessions[sid].transport.close();
-      } catch {
-        /* ignore */
-      }
-      delete sessions[sid];
-    }
+    for (const sid of Object.keys(sessions)) disposeSession(sid);
   };
 
   const touch = (sid: string) => {
@@ -109,21 +110,23 @@ export async function startHttp(config: Config): Promise<() => void> {
           res.status(429).json({ error: "Limite de sessões atingido." });
           return;
         }
+        // Cada sessão recebe seu PRÓPRIO servidor + recursos (JobManager/
+        // Watcher/PTY/env isolados). Guardamos os recursos para descartá-los
+        // quando a sessão fechar.
+        const { server, resources } = buildServer(config);
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sid) => {
-            sessions[sid] = { transport, lastSeen: Date.now() };
+            sessions[sid] = { transport, resources, lastSeen: Date.now() };
           },
           enableDnsRebindingProtection: true,
           allowedOrigins: config.allowedOrigins,
           ...(config.allowedHosts.length > 0 ? { allowedHosts: config.allowedHosts } : {}),
         });
         transport.onclose = () => {
-          if (transport.sessionId) delete sessions[transport.sessionId];
+          if (transport.sessionId) disposeSession(transport.sessionId);
+          else resources.dispose(); // sessão que fechou antes de inicializar
         };
-        // Cada sessão recebe seu PRÓPRIO servidor (JobManager/Watcher/env
-        // isolados) — uma sessão não enxerga jobs/watches de outra.
-        const server = buildServer(config);
         await server.connect(transport);
       } else {
         res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Sessão inválida." }, id: null });
@@ -158,14 +161,7 @@ export async function startHttp(config: Config): Promise<() => void> {
   const sweep = setInterval(() => {
     const now = Date.now();
     for (const [sid, entry] of Object.entries(sessions)) {
-      if (now - entry.lastSeen > SESSION_IDLE_MS) {
-        try {
-          entry.transport.close();
-        } catch {
-          /* ignore */
-        }
-        delete sessions[sid];
-      }
+      if (now - entry.lastSeen > SESSION_IDLE_MS) disposeSession(sid); // encerra recursos ociosos
     }
   }, SWEEP_MS);
   (sweep as { unref?: () => void }).unref?.();

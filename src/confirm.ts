@@ -29,6 +29,11 @@ export class ConfirmStore {
     return token;
   }
 
+  /** Limpa todas as confirmações pendentes (cleanup de sessão). */
+  clear(): void {
+    this.pending.clear();
+  }
+
   /** Consome o token se válido e casar com a ação. Uso único. */
   consume(token: string, tool: string, args: Record<string, unknown>): boolean {
     const p = this.pending.get(token);

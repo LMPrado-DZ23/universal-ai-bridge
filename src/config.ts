@@ -42,6 +42,7 @@ export interface Config {
   policy: PolicyFile;
   auditDir: string;
   dataDir: string;
+  envFile: string;
 }
 
 /** Carrega variáveis de um arquivo .env para process.env. Silencioso se ausente. */
@@ -154,11 +155,21 @@ export function loadConfig(): Config {
   // Pasta de dados/auditoria: usa BRIDGE_DATA_DIR quando definido (instalação).
   const dataDir = process.env.BRIDGE_DATA_DIR ? resolve(process.env.BRIDGE_DATA_DIR) : projectRoot;
   const auditDir = resolve(dataDir, "audit");
+  const envFile = process.env.BRIDGE_ENV_FILE ? resolve(process.env.BRIDGE_ENV_FILE) : resolve(projectRoot, ".env");
 
   validateToken(process.env.BRIDGE_TOKEN);
 
   const port = parsePort(process.env.BRIDGE_PORT);
+  // adminPort: validado APÓS derivar o default (port+1 pode estourar 65535).
   const adminPort = process.env.BRIDGE_ADMIN_PORT ? parsePort(process.env.BRIDGE_ADMIN_PORT) : port + 1;
+  if (adminPort < 1 || adminPort > 65535) {
+    throw new Error(
+      `Porta admin inválida (${adminPort}). BRIDGE_PORT+1 estourou o limite — defina BRIDGE_ADMIN_PORT (1–65535).`
+    );
+  }
+  if (adminPort === port) {
+    throw new Error("BRIDGE_ADMIN_PORT não pode ser igual a BRIDGE_PORT.");
+  }
 
   const maxSessions = Number(process.env.BRIDGE_MAX_SESSIONS ?? 20);
   if (!Number.isInteger(maxSessions) || maxSessions < 1) {
@@ -180,5 +191,6 @@ export function loadConfig(): Config {
     policy: loadPolicy(),
     auditDir,
     dataDir,
+    envFile,
   };
 }

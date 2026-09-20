@@ -145,4 +145,10 @@ export class PtyManager {
       }
     }
   }
+
+  /** Encerra tudo e remove do registro estático (cleanup de sessão). */
+  destroy(): void {
+    this.killAll();
+    PtyManager.all.delete(this);
+  }
 }

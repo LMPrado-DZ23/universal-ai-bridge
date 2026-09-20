@@ -3,7 +3,8 @@
 # Version: por padrão "latest"; pode ser fixada (ex.: -Version "2024.12.2").
 param(
   [Parameter(Mandatory = $true)][string]$InstallDir,
-  [string]$Version = "latest"
+  # Versão FIXA por padrão (não 'latest' mutável). Pode ser sobrescrita.
+  [string]$Version = "2025.8.1"
 )
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -19,14 +20,20 @@ if (Test-Path $exe) {
   Remove-Item $exe -Force
 }
 
-$url = if ($Version -eq "latest") {
-  "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
-} else {
-  "https://github.com/cloudflare/cloudflared/releases/download/$Version/cloudflared-windows-amd64.exe"
+function Get-Url([string]$v) {
+  if ($v -eq "latest") { return "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" }
+  return "https://github.com/cloudflare/cloudflared/releases/download/$v/cloudflared-windows-amd64.exe"
 }
-Write-Output "Baixando cloudflared ($Version)..."
 $tmp = Join-Path $env:TEMP "cloudflared-dl.exe"
-Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
+Write-Output "Baixando cloudflared ($Version)..."
+try {
+  Invoke-WebRequest -Uri (Get-Url $Version) -OutFile $tmp -UseBasicParsing
+} catch {
+  # Resiliência: se a versão fixada não existir, cai para 'latest' — a
+  # verificação de assinatura Authenticode (abaixo) continua sendo a garantia.
+  Write-Output "Versão $Version indisponível; usando 'latest' (assinatura ainda é verificada)."
+  Invoke-WebRequest -Uri (Get-Url "latest") -OutFile $tmp -UseBasicParsing
+}
 
 $sig = Get-AuthenticodeSignature $tmp
 if ($sig.Status -ne 'Valid') {

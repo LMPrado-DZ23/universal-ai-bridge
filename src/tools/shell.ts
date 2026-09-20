@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { spawnSync } from "node:child_process";
 import { safeResolve } from "../security/paths.js";
+import { sanitizeCommand } from "../audit/log.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";
 
 /**
@@ -29,7 +30,7 @@ export function registerShellTools(server: McpServer, ctx: Ctx): void {
       try {
         const decision = ctx.policy.checkCommand(command);
         if (!decision.ok) {
-          ctx.audit.record({ tool: "run_command", decision: "deny", args: core, detail: decision.reason });
+          ctx.audit.record({ tool: "run_command", decision: "deny", args: { cmd: sanitizeCommand(command), cwd }, detail: decision.reason });
           return fail(`Bloqueado pela política: ${decision.reason}`);
         }
         const workdir = safeResolve(ctx.config.workspace, cwd);
@@ -45,7 +46,7 @@ export function registerShellTools(server: McpServer, ctx: Ctx): void {
           encoding: "utf8",
           env: { ...process.env, ...ctx.sessionEnv },
         });
-        ctx.audit.record({ tool: "run_command", decision: "executed", args: core, detail: `exit=${r.status}` });
+        ctx.audit.record({ tool: "run_command", decision: "executed", args: { cmd: sanitizeCommand(command), cwd }, detail: `exit=${r.status}` });
         const out = [
           `exit code: ${r.status}`,
           r.stdout ? `--- stdout ---\n${r.stdout}` : "",
@@ -55,7 +56,7 @@ export function registerShellTools(server: McpServer, ctx: Ctx): void {
           .join("\n");
         return ok(out || "(sem saída)");
       } catch (e) {
-        ctx.audit.record({ tool: "run_command", decision: "error", args: core, detail: String((e as Error).message) });
+        ctx.audit.record({ tool: "run_command", decision: "error", args: { cmd: sanitizeCommand(command), cwd }, detail: String((e as Error).message) });
         return fail(String((e as Error).message));
       }
     }

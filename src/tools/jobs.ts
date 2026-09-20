@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { safeResolve } from "../security/paths.js";
+import { sanitizeCommand } from "../audit/log.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";
 
 /**
@@ -29,14 +30,14 @@ export function registerJobTools(server: McpServer, ctx: Ctx): void {
       try {
         const decision = ctx.policy.checkCommand(command);
         if (!decision.ok) {
-          ctx.audit.record({ tool: "run_job", decision: "deny", args: core, detail: decision.reason });
+          ctx.audit.record({ tool: "run_job", decision: "deny", args: { cmd: sanitizeCommand(command), cwd }, detail: decision.reason });
           return fail(`Bloqueado pela política: ${decision.reason}`);
         }
         const workdir = safeResolve(ctx.config.workspace, cwd);
         const g = gate(ctx, "run_job", core, confirm_token);
         if (!g.proceed) return g.result;
         const id = ctx.jobs.start(command, workdir, ctx.sessionEnv);
-        ctx.audit.record({ tool: "run_job", decision: "executed", args: core, detail: `job=${id}` });
+        ctx.audit.record({ tool: "run_job", decision: "executed", args: { cmd: sanitizeCommand(command), cwd }, detail: `job=${id}` });
         return ok(`✔ Job iniciado: ${id}\nUse job_output com job_id="${id}" para acompanhar.`);
       } catch (e) {
         return fail(String((e as Error).message));

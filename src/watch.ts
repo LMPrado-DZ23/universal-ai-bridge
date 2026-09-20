@@ -80,4 +80,10 @@ export class Watcher {
       }
     }
   }
+
+  /** Encerra tudo e remove do registro estático (cleanup de sessão). */
+  destroy(): void {
+    this.stopAll();
+    Watcher.all.delete(this);
+  }
 }

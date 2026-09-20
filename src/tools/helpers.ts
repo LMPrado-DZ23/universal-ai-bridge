@@ -47,8 +47,11 @@ export function gate(
     ctx.audit.record({ tool, decision: "confirm-required", args: sanitizeArgs(coreArgs) });
 
     if (ctx.config.approval === "local") {
+      // Preview LEGÍVEL só no console local (o humano decide). Não vai ao audit
+      // nem ao modelo — o audit acima já registra apenas metadados.
+      const localPreview = JSON.stringify(coreArgs).slice(0, 300);
       process.stderr.write(
-        `\n[APROVAÇÃO LOCAL] ${tool} ${JSON.stringify(sanitizeArgs(coreArgs))}\n` +
+        `\n[APROVAÇÃO LOCAL] ${tool} ${localPreview}\n` +
           `  código: ${token}\n` +
           `  (informe este código à IA para autorizar; expira em 5 min)\n`
       );
@@ -65,9 +68,8 @@ export function gate(
     return {
       proceed: false,
       result: ok(
-        `⚠️ Confirmação necessária para "${tool}".\n` +
-          `Ação: ${JSON.stringify(sanitizeArgs(coreArgs))}\n` +
-          `Para executar, chame "${tool}" de novo com os MESMOS argumentos e confirm_token="${token}".`
+        `⚠️ Confirmação necessária para "${tool}". Para executar, chame "${tool}" de novo ` +
+          `com os MESMOS argumentos e confirm_token="${token}".`
       ),
     };
   }

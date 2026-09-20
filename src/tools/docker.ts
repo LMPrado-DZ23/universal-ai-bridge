@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { safeResolve } from "../security/paths.js";
 import { scanShellUnsafe } from "../policy/engine.js";
+import { sanitizeCommand } from "../audit/log.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";
 
 /**
@@ -35,7 +36,7 @@ export function registerDockerTools(server: McpServer, ctx: Ctx): void {
         if (!g.proceed) return g.result;
         const command = `docker ${args}`;
         const id = ctx.jobs.start(command, workdir);
-        ctx.audit.record({ tool: "docker", decision: "executed", args: core, detail: `job=${id}` });
+        ctx.audit.record({ tool: "docker", decision: "executed", args: { cmd: sanitizeCommand(`docker ${args}`), cwd }, detail: `job=${id}` });
         return ok(`✔ docker iniciado como job ${id}\nUse job_output com job_id="${id}".`);
       } catch (e) {
         return fail(String((e as Error).message));

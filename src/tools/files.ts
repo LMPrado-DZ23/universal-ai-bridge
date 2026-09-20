@@ -9,7 +9,7 @@ import {
   renameSync,
   existsSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, basename } from "node:path";
 import { safeResolve, display } from "../security/paths.js";
 import { sanitizeArgs } from "../audit/log.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";
@@ -22,25 +22,24 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Informações do workspace",
       description:
-        "Retorna raiz do workspace, modo (safe/admin), aprovação e se shell/docker estão habilitados. Chame primeiro.",
-      inputSchema: {},
+        "Retorna nome do workspace, modo (safe/admin), aprovação e se shell/docker estão habilitados. Chame primeiro. " +
+        "Não revela o caminho absoluto por padrão (use include_absolute_path=true se precisar).",
+      inputSchema: {
+        include_absolute_path: z.boolean().default(false).describe("Incluir o caminho absoluto do workspace"),
+      },
     },
-    async () => {
+    async ({ include_absolute_path }) => {
       ctx.audit.record({ tool: "get_workspace_info", decision: "allow", args: {} });
-      return ok(
-        JSON.stringify(
-          {
-            workspace: ws,
-            mode: ctx.config.mode,
-            approval: ctx.config.approval,
-            shell_enabled: ctx.config.allowShell,
-            docker_enabled: ctx.config.allowDocker,
-            note: "Todos os caminhos são relativos a esta raiz. Você não pode sair dela.",
-          },
-          null,
-          2
-        )
-      );
+      const info: Record<string, unknown> = {
+        workspace_name: basename(ws),
+        mode: ctx.config.mode,
+        approval: ctx.config.approval,
+        shell_enabled: ctx.config.allowShell,
+        docker_enabled: ctx.config.allowDocker,
+        note: "Todos os caminhos são relativos à raiz do workspace. Você não pode sair dela.",
+      };
+      if (include_absolute_path) info.workspace_path = ws;
+      return ok(JSON.stringify(info, null, 2));
     }
   );
 

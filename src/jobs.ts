@@ -184,6 +184,12 @@ export class JobManager {
       }
     }
   }
+
+  /** Encerra tudo e remove do registro estático (cleanup de sessão). */
+  destroy(): void {
+    this.killAll();
+    JobManager.all.delete(this);
+  }
 }
 
 /** Tokeniza um comando respeitando aspas duplas simples. */

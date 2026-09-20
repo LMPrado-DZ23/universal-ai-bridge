@@ -6,6 +6,7 @@ const KEYS = [
   "BRIDGE_MODE", "BRIDGE_ADMIN_ACK", "BRIDGE_TOKEN", "BRIDGE_PORT",
   "BRIDGE_APPROVAL", "BRIDGE_ALLOW_SHELL", "BRIDGE_ALLOW_DOCKER",
   "BRIDGE_WORKSPACE", "BRIDGE_ALLOWED_ORIGINS", "BRIDGE_ALLOWED_HOSTS", "BRIDGE_ENV_FILE",
+  "BRIDGE_ADMIN_PORT", "BRIDGE_MAX_SESSIONS", "BRIDGE_DATA_DIR", "BRIDGE_ADMIN_SECRET",
 ];
 function clear() {
   for (const k of KEYS) delete process.env[k];
@@ -49,6 +50,21 @@ describe("loadConfig fail-closed (C13)", () => {
     expect(() => loadConfig()).toThrow(/TOKEN/);
     process.env.BRIDGE_TOKEN = "curto";
     expect(() => loadConfig()).toThrow(/TOKEN/);
+  });
+
+  it("adminPort derivado inválido (BRIDGE_PORT=65535) falha (C4)", () => {
+    clear();
+    process.env.BRIDGE_PORT = "65535";
+    process.env.BRIDGE_TOKEN = "0123456789abcdef0123456789abcdef";
+    expect(() => loadConfig()).toThrow(/admin/i);
+  });
+
+  it("adminPort explícito válido com BRIDGE_PORT=65535 funciona", () => {
+    clear();
+    process.env.BRIDGE_PORT = "65535";
+    process.env.BRIDGE_ADMIN_PORT = "8788";
+    process.env.BRIDGE_TOKEN = "0123456789abcdef0123456789abcdef";
+    expect(loadConfig().adminPort).toBe(8788);
   });
 
   it("config válida (safe) carrega", () => {

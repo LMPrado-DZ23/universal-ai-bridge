@@ -7,7 +7,7 @@ import { buildServer } from "../server.js";
  * Gemini CLI). Sem rede, sem token — a confiança é o processo local.
  */
 export async function startStdio(config: Config): Promise<void> {
-  const server = buildServer(config);
+  const { server } = buildServer(config);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // Nada de console.log aqui: stdout é o canal do protocolo.

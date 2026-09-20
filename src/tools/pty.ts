@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { safeResolve } from "../security/paths.js";
 import { tokenize } from "../jobs.js";
 import { loadPty } from "../pty.js";
+import { sanitizeCommand } from "../audit/log.js";
 import { ok, fail, gate, type Ctx } from "./helpers.js";
 
 /**
@@ -40,7 +41,7 @@ export function registerPtyTools(server: McpServer, ctx: Ctx): void {
         if (!g.proceed) return g.result;
         const [file, ...args] = tokenize(command);
         const id = ctx.pty.start(file, args, workdir, cols, rows, ctx.sessionEnv);
-        ctx.audit.record({ tool: "pty_start", decision: "executed", args: core, detail: `pty=${id}` });
+        ctx.audit.record({ tool: "pty_start", decision: "executed", args: { cmd: sanitizeCommand(command), cwd }, detail: `pty=${id}` });
         return ok(`✔ PTY iniciado: ${id}. Use pty_output com pty_id="${id}".`);
       } catch (e) {
         return fail(String((e as Error).message));
