@@ -18,6 +18,8 @@ function Get-EnvValue([string]$key) {
 }
 $port = Get-EnvValue "BRIDGE_PORT"; if (-not $port) { $port = "8787" }
 $mode = Get-EnvValue "BRIDGE_MODE"; if (-not $mode) { $mode = "safe" }
+$tunnelToken = Get-EnvValue "CLOUDFLARE_TUNNEL_TOKEN"
+$tunnelHostname = Get-EnvValue "TUNNEL_HOSTNAME"
 
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
 if (-not $node) { throw "Node.js nao encontrado no PATH." }
@@ -46,21 +48,33 @@ $tunnelPid = $null
 if (-not $NoTunnel) {
   $cf = Join-Path $InstallDir "bin\cloudflared.exe"
   if (Test-Path $cf) {
-    $log = Join-Path $DataDir "tunnel.log"
-    if (Test-Path $log) { Remove-Item $log -Force }
-    $tp = Start-Process -FilePath $cf `
-      -ArgumentList @("tunnel", "--url", "http://127.0.0.1:$port", "--no-autoupdate") `
-      -WindowStyle Hidden -PassThru -RedirectStandardError $log -RedirectStandardOutput (Join-Path $DataDir "tunnel.out.log")
-    $tunnelPid = $tp.Id
-    # Espera a URL aparecer no log (ate ~25s).
-    for ($i = 0; $i -lt 50; $i++) {
-      Start-Sleep -Milliseconds 500
-      if (Test-Path $log) {
-        $m = Select-String -Path $log -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' | Select-Object -First 1
-        if ($m) { $tunnelHost = $m.Matches[0].Value; break }
+    if ($tunnelToken) {
+      # Túnel NOMEADO: URL fixa configurada na sua conta Cloudflare.
+      $tp = Start-Process -FilePath $cf `
+        -ArgumentList @("tunnel", "run", "--token", $tunnelToken) `
+        -WindowStyle Hidden -PassThru
+      $tunnelPid = $tp.Id
+      if ($tunnelHostname) {
+        $tunnelHost = "https://$tunnelHostname"
+        $endpoint = "$tunnelHost/mcp"
       }
+    } else {
+      # Túnel RÁPIDO: URL efêmera (muda a cada reinício).
+      $log = Join-Path $DataDir "tunnel.log"
+      if (Test-Path $log) { Remove-Item $log -Force }
+      $tp = Start-Process -FilePath $cf `
+        -ArgumentList @("tunnel", "--url", "http://127.0.0.1:$port", "--no-autoupdate") `
+        -WindowStyle Hidden -PassThru -RedirectStandardError $log -RedirectStandardOutput (Join-Path $DataDir "tunnel.out.log")
+      $tunnelPid = $tp.Id
+      for ($i = 0; $i -lt 50; $i++) {
+        Start-Sleep -Milliseconds 500
+        if (Test-Path $log) {
+          $m = Select-String -Path $log -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' | Select-Object -First 1
+          if ($m) { $tunnelHost = $m.Matches[0].Value; break }
+        }
+      }
+      if ($tunnelHost) { $endpoint = "$tunnelHost/mcp" }
     }
-    if ($tunnelHost) { $endpoint = "$tunnelHost/mcp" }
   }
 }
 

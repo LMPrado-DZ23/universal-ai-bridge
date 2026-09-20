@@ -17,6 +17,9 @@ permissions:
 jobs:
   build-installer:
     runs-on: windows-latest
+    env:
+      CODE_SIGN_PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
+      CODE_SIGN_PASSWORD: ${{ secrets.CODE_SIGN_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,6 +49,12 @@ jobs:
             throw "Instalador não foi gerado."
           }
           Get-Item "installer\Output\UniversalAI-Bridge-Setup.exe" | Select-Object Name, Length
+        shell: pwsh
+
+      - name: Sign installer (se houver certificado)
+        if: env.CODE_SIGN_PFX_BASE64 != ''
+        run: |
+          & "installer\scripts\sign.ps1" -File "installer\Output\UniversalAI-Bridge-Setup.exe" -PfxBase64 "$env:CODE_SIGN_PFX_BASE64" -Password "$env:CODE_SIGN_PASSWORD"
         shell: pwsh
 
       - name: Upload installer artifact

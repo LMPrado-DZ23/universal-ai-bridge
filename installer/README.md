@@ -64,14 +64,33 @@ npm prune --omit=dev
 - `scripts\uninstall-cleanup.ps1` — limpeza na desinstalação.
 - `control\control.ps1` — painel de controle (WinForms).
 
+## Melhorias opcionais (já suportadas — só ativar)
+
+### Assinar o `.exe` (remove o alerta do SmartScreen)
+
+O pipeline assina o instalador **automaticamente** se você fornecer um
+certificado de code signing. Em **Settings → Secrets and variables → Actions**
+do repositório, crie:
+
+- `CODE_SIGN_PFX_BASE64` — seu certificado `.pfx` em base64
+  (`[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))`).
+- `CODE_SIGN_PASSWORD` — a senha do `.pfx`.
+
+No próximo build, `installer/scripts/sign.ps1` assina e valida (SHA256 +
+timestamp). Sem os secrets, o build continua e gera um `.exe` não assinado.
+
+### URL fixa (túnel nomeado da Cloudflare)
+
+Crie um túnel nomeado no painel da Cloudflare (requer sua conta + domínio),
+mapeie o hostname para `http://127.0.0.1:8787`, e defina no `.env`
+(`%LOCALAPPDATA%\UniversalAIBridge\.env`): `CLOUDFLARE_TUNNEL_TOKEN` e
+`TUNNEL_HOSTNAME`. O `launcher.ps1` passa a usar a URL fixa automaticamente.
+
 ## Limitações honestas
 
-- O túnel gratuito (`trycloudflare`) gera uma **URL nova a cada reinício**. O
-  painel sempre mostra o endpoint atual (botão **Copiar endpoint**); se o bridge
-  reiniciar, o usuário recola a URL no ChatGPT. Para URL fixa, use um túnel
-  nomeado do Cloudflare (requer conta) ou VPN.
-- O `.exe` do CI **não é assinado** — o SmartScreen do Windows pode alertar
-  ("Mais informações → Executar assim mesmo"). Assinatura de código exige um
-  certificado do mantenedor.
+- Sem o certificado acima, o `.exe` **não é assinado** — o SmartScreen pode
+  alertar ("Mais informações → Executar assim mesmo").
+- Sem o túnel nomeado, o `trycloudflare` gera **URL nova a cada reinício**; o
+  painel mostra o endpoint atual (botão **Copiar endpoint**).
 - O bridge roda com os **privilégios do usuário logado** (não SYSTEM). No modo
   admin isso significa acesso amplo aos arquivos/contas desse usuário.

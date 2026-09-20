@@ -29,6 +29,17 @@ if ([string]::IsNullOrWhiteSpace($token)) {
 
 $allowShell = if ($Mode -eq "admin") { "true" } else { "false" }
 
+# Preserva config de túnel nomeado, se já existir.
+function Get-Existing([string]$key) {
+  if (Test-Path $envFile) {
+    $l = Select-String -Path $envFile -Pattern "^$key=(.*)$" | Select-Object -First 1
+    if ($l) { return $l.Matches[0].Groups[1].Value.Trim() }
+  }
+  return ""
+}
+$tunnelToken = Get-Existing "CLOUDFLARE_TUNNEL_TOKEN"
+$tunnelHost = Get-Existing "TUNNEL_HOSTNAME"
+
 $content = @"
 BRIDGE_MODE=$Mode
 BRIDGE_ADMIN_ACK=$Ack
@@ -39,6 +50,8 @@ BRIDGE_WORKSPACE=$ws
 BRIDGE_APPROVAL=confirm
 BRIDGE_ALLOW_SHELL=$allowShell
 BRIDGE_ALLOW_DOCKER=false
+CLOUDFLARE_TUNNEL_TOKEN=$tunnelToken
+TUNNEL_HOSTNAME=$tunnelHost
 "@
 # Escreve SEM BOM: um BOM na 1ª linha corromperia a chave BRIDGE_MODE
 # (e o modo cairia silenciosamente para safe).

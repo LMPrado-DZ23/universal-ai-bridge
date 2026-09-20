@@ -152,8 +152,21 @@ Escuta só em `http://127.0.0.1:8787/mcp`. Exponha com cloudflared:
 cloudflared tunnel --url http://127.0.0.1:8787
 ```
 
-O cloudflared devolve uma URL `https://...trycloudflare.com`. Acrescente esse host
-em `BRIDGE_ALLOWED_ORIGINS` e reinicie. O endpoint MCP é `https://.../mcp`.
+O cloudflared devolve uma URL `https://...trycloudflare.com`. O endpoint MCP é
+`https://.../mcp`.
+
+**URL fixa (túnel nomeado):** o túnel rápido muda de URL a cada reinício. Para uma
+URL estável, crie um **túnel nomeado** no painel da Cloudflare (requer sua conta +
+um domínio na Cloudflare), mapeie o hostname para `http://127.0.0.1:8787`, e ponha
+no `.env`:
+
+```env
+CLOUDFLARE_TUNNEL_TOKEN=<token do túnel nomeado>
+TUNNEL_HOSTNAME=bridge.seudominio.com
+```
+
+O launcher passa a usar `cloudflared tunnel run --token …` (URL fixa) em vez do
+túnel efêmero, automaticamente.
 
 - **ChatGPT** (Settings → Connectors / modo desenvolvedor): adicione conector MCP com
   a URL `/mcp` e header `Authorization: Bearer <BRIDGE_TOKEN>`.
