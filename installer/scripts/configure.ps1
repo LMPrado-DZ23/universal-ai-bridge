@@ -1,0 +1,48 @@
+# configure.ps1 — cria a pasta de dados, gera token seguro e escreve o .env.
+# Idempotente: preserva um token existente para não quebrar conectores já configurados.
+param(
+  [Parameter(Mandatory = $true)][string]$DataDir,
+  [ValidateSet("safe", "admin")][string]$Mode = "safe",
+  [string]$Ack = "",
+  [int]$Port = 8787
+)
+$ErrorActionPreference = "Stop"
+
+New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+$ws = Join-Path $DataDir "workspace"
+New-Item -ItemType Directory -Force -Path $ws | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $DataDir "audit") | Out-Null
+
+$envFile = Join-Path $DataDir ".env"
+
+# Preserva token existente, se houver.
+$token = $null
+if (Test-Path $envFile) {
+  $line = Select-String -Path $envFile -Pattern '^BRIDGE_TOKEN=(.+)$' | Select-Object -First 1
+  if ($line) { $token = $line.Matches[0].Groups[1].Value.Trim() }
+}
+if ([string]::IsNullOrWhiteSpace($token)) {
+  $bytes = New-Object 'System.Byte[]' 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  $token = -join ($bytes | ForEach-Object { $_.ToString('x2') })
+}
+
+$allowShell = if ($Mode -eq "admin") { "true" } else { "false" }
+
+$content = @"
+BRIDGE_MODE=$Mode
+BRIDGE_ADMIN_ACK=$Ack
+BRIDGE_TOKEN=$token
+BRIDGE_PORT=$Port
+BRIDGE_ALLOWED_ORIGINS=https://chatgpt.com,https://chat.openai.com,https://claude.ai
+BRIDGE_WORKSPACE=$ws
+BRIDGE_APPROVAL=confirm
+BRIDGE_ALLOW_SHELL=$allowShell
+BRIDGE_ALLOW_DOCKER=false
+"@
+# Escreve SEM BOM: um BOM na 1ª linha corromperia a chave BRIDGE_MODE
+# (e o modo cairia silenciosamente para safe).
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($envFile, $content, $utf8NoBom)
+
+Write-Output "Config escrita em $envFile (modo=$Mode, porta=$Port, workspace=$ws)"

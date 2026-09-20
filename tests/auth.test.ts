@@ -14,6 +14,7 @@ const base: Config = {
   token: "segredo123",
   port: 8787,
   allowedOrigins: ["https://chatgpt.com"],
+  allowedHosts: [],
   approval: "confirm",
   allowShell: false,
   allowDocker: false,

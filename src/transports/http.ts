@@ -65,6 +65,9 @@ export async function startHttp(config: Config): Promise<() => void> {
           },
           enableDnsRebindingProtection: true,
           allowedOrigins: config.allowedOrigins,
+          // Só restringe Host quando configurado (ex.: host do túnel). Vazio =
+          // não restringe (loopback/local funciona sem configurar nada).
+          ...(config.allowedHosts.length > 0 ? { allowedHosts: config.allowedHosts } : {}),
         });
         transport.onclose = () => {
           if (transport.sessionId) delete sessions[transport.sessionId];

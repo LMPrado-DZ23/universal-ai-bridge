@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { resolveMode, ADMIN_ACK_PHRASE } from "../src/config.js";
 
+// ADMIN_ACK_PHRASE deve casar com a frase do produto/instalador.
+
 describe("resolveMode (safe vs admin)", () => {
   it("safe é o padrão quando nada é definido", () => {
     const r = resolveMode({});

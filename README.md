@@ -48,7 +48,7 @@ O modo é escolhido por `BRIDGE_MODE`.
 ### Modo administrador (`admin`) — opt-in deliberado
 
 - Shell **ligado** por padrão; Docker liberável com `BRIDGE_ALLOW_DOCKER=true`.
-- **Exige reconhecimento explícito**: `BRIDGE_ADMIN_ACK=eu-aceito-acesso-total`.
+- **Exige reconhecimento explícito**: `BRIDGE_ADMIN_ACK=I_UNDERSTAND_FULL_PC_ACCESS`.
   Sem essa frase exata, o servidor **não sobe** em modo admin (cai para safe/erro).
 - Continua com workspace jaulado (o escopo é a raiz do workspace — amplie-a
   conscientemente se precisar).
@@ -93,7 +93,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 | Variável | Efeito |
 |---|---|
 | `BRIDGE_MODE` | `safe` (padrão) ou `admin`. |
-| `BRIDGE_ADMIN_ACK` | Só admin: precisa ser `eu-aceito-acesso-total`. |
+| `BRIDGE_ADMIN_ACK` | Só admin: precisa ser `I_UNDERSTAND_FULL_PC_ACCESS`. |
 | `BRIDGE_TOKEN` | Token Bearer do HTTP. Sem ele, o HTTP não sobe. |
 | `BRIDGE_PORT` | Porta loopback (padrão 8787). |
 | `BRIDGE_ALLOWED_ORIGINS` | Origins permitidos (CSV) — anti DNS-rebinding. |

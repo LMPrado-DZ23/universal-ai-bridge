@@ -9,7 +9,7 @@ export type ApprovalMode = "auto" | "confirm" | "local";
 export type BridgeMode = "safe" | "admin";
 
 /** Frase exata exigida para habilitar o modo administrador (anti-acidente). */
-export const ADMIN_ACK_PHRASE = "eu-aceito-acesso-total";
+export const ADMIN_ACK_PHRASE = "I_UNDERSTAND_FULL_PC_ACCESS";
 
 export interface PolicyFile {
   shell: {
@@ -33,6 +33,7 @@ export interface Config {
   token: string | undefined;
   port: number;
   allowedOrigins: string[];
+  allowedHosts: string[];
   approval: ApprovalMode;
   allowShell: boolean;
   allowDocker: boolean;
@@ -100,8 +101,17 @@ export function resolveMode(env: NodeJS.ProcessEnv = process.env): {
   };
 }
 
+function csv(v: string | undefined): string[] {
+  return (v ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function loadConfig(): Config {
-  // Carrega .env do diretório do projeto ANTES de ler process.env.
+  // Carrega o .env ANTES de ler process.env. Ordem: BRIDGE_ENV_FILE (definido
+  // pelo instalador, aponta p/ a pasta de dados) e depois o .env do projeto.
+  if (process.env.BRIDGE_ENV_FILE) applyEnvFile(process.env.BRIDGE_ENV_FILE);
   applyEnvFile(resolve(projectRoot, ".env"));
 
   const { mode, allowShell, allowDocker } = resolveMode(process.env);
@@ -110,21 +120,22 @@ export function loadConfig(): Config {
     ? resolve(process.env.BRIDGE_WORKSPACE)
     : resolve(projectRoot, "workspace");
 
-  const allowedOrigins = (process.env.BRIDGE_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  // Pasta de auditoria: usa BRIDGE_DATA_DIR quando definido (instalação).
+  const auditDir = process.env.BRIDGE_DATA_DIR
+    ? resolve(process.env.BRIDGE_DATA_DIR, "audit")
+    : resolve(projectRoot, "audit");
 
   return {
     mode,
     workspace,
     token: process.env.BRIDGE_TOKEN,
     port: Number(process.env.BRIDGE_PORT ?? 8787),
-    allowedOrigins,
+    allowedOrigins: csv(process.env.BRIDGE_ALLOWED_ORIGINS),
+    allowedHosts: csv(process.env.BRIDGE_ALLOWED_HOSTS),
     approval: parseApproval(process.env.BRIDGE_APPROVAL),
     allowShell,
     allowDocker,
     policy: loadPolicy(),
-    auditDir: resolve(projectRoot, "audit"),
+    auditDir,
   };
 }

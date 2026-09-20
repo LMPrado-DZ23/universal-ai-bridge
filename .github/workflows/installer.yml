@@ -1,0 +1,59 @@
+name: Build Windows Installer
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "installer/**"
+      - "src/**"
+      - "package.json"
+      - ".github/workflows/installer.yml"
+  workflow_dispatch:
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps and build
+        run: |
+          npm ci
+          npm run build
+          npm test
+        shell: pwsh
+
+      - name: Prune to production dependencies
+        run: npm prune --omit=dev
+        shell: pwsh
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+        shell: pwsh
+
+      - name: Compile installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\UniversalAI-Bridge.iss"
+          if (-not (Test-Path "installer\Output\UniversalAI-Bridge-Setup.exe")) {
+            throw "Instalador não foi gerado."
+          }
+          Get-Item "installer\Output\UniversalAI-Bridge-Setup.exe" | Select-Object Name, Length
+        shell: pwsh
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UniversalAI-Bridge-Setup
+          path: installer/Output/UniversalAI-Bridge-Setup.exe
+          if-no-files-found: error
+
+      - name: Attach to release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/Output/UniversalAI-Bridge-Setup.exe

@@ -4,3 +4,4 @@ dist/
 audit/*.jsonl
 workspace/
 *.log
+installer/Output/
