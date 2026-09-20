@@ -10,7 +10,7 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /** Extrai o token de Authorization: Bearer <t> ou header X-Bridge-Token. */
-function extractToken(req: Request): string | undefined {
+export function extractToken(req: Request): string | undefined {
   const auth = req.header("authorization");
   if (auth?.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
   const x = req.header("x-bridge-token");

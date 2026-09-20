@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.2 — Fase 2: segurança operacional remota
+
+Camada de operação para o produto exposto por túnel.
+
+- **Rate limiting + lockout progressivo** por IP no `/mcp` (`RateLimiter`):
+  muitas tentativas de token inválido bloqueiam o IP por tempo crescente; 429
+  com `Retry-After`.
+- **Limite de sessões** simultâneas (`BRIDGE_MAX_SESSIONS`, padrão 20).
+- **Ownership por sessão:** cada sessão HTTP recebe seu próprio `buildServer`
+  (JobManager/Watcher/env isolados) — uma sessão não enxerga/cancela jobs de
+  outra (teste de regressão incluso).
+- **TokenStore** com rotação/revogação em runtime (invalida o token anterior).
+- **Plano de controle LOCAL** (`src/transports/admin.ts`) numa porta separada
+  (`BRIDGE_PORT+1`, **não** encaminhada pelo túnel), protegido por
+  `BRIDGE_ADMIN_SECRET` (gerado e salvo em `<dados>/admin.secret`, 0600):
+  `/admin/rotate`, `/admin/revoke`, `/admin/panic`, `/admin/status`.
+- **Painel de Controle** (`control.ps1`) ganhou **Rotacionar token**,
+  **Revogar acesso remoto** e integra o **panic** ao botão de parada.
+- `configure.ps1` gera `BRIDGE_ADMIN_SECRET` e grava `BRIDGE_MAX_SESSIONS`.
+- Config: `dataDir`, `adminPort`, `maxSessions` validados; `/health` mínimo.
+
+### Testes
+- 84 testes (13 novos): `RateLimiter`, `TokenStore`, e integração de Fase 2
+  (ownership entre 2 sessões, admin exige segredo, rotate invalida token antigo,
+  panic revoga, lockout → 429).
+
+### Ainda pendente
+- **Sem dashboard hospedado / device pairing na nuvem** — o controle é local
+  (o túnel é apenas transporte). Documentado, sem alegação falsa.
+- Fase 4 (PDF/DOCX/XLSX, PTY, paginação) e Fase 5 (checksums/SBOM do instalador)
+  — próximas.
+
 ## 0.4.1 — Rodada de segurança (resposta à auditoria)
 
 Correção dos bloqueadores reproduzíveis apontados na auditoria técnica.

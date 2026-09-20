@@ -208,12 +208,30 @@ Bloqueado no modo safe. No admin, com `BRIDGE_ALLOW_DOCKER=true`, a ferramenta
 
 ---
 
-## 8. Tokens
+## 8. Tokens e controle operacional
 
-- O token do HTTP fica em `BRIDGE_TOKEN` (no `.env`, que é git-ignored).
-- Comparação em tempo constante (`timingSafeEqual`); nunca é logado.
-- **Rotação:** gere um novo token, atualize o `.env`, reinicie o servidor e o
-  conector. Sessões antigas param de valer.
+- O token do HTTP fica em `BRIDGE_TOKEN` (no `.env`, git-ignored). Comparação em
+  tempo constante; nunca é logado.
+- **Rate limiting + lockout progressivo:** requisições por IP são limitadas e um
+  IP com muitas tentativas de token inválido é bloqueado por um tempo crescente.
+- **Limite de sessões:** `BRIDGE_MAX_SESSIONS` (padrão 20) simultâneas.
+- **Ownership por sessão:** cada sessão HTTP tem seu próprio conjunto de jobs,
+  watches e variáveis — **uma sessão não vê nem cancela jobs de outra**.
+- **Plano de controle LOCAL** numa porta separada (`BRIDGE_PORT+1`, **não**
+  encaminhada pelo túnel), protegido por `BRIDGE_ADMIN_SECRET`
+  (`<dados>/admin.secret`). Ações:
+  - `POST /admin/rotate` — gera um novo token (o antigo para de valer na hora).
+  - `POST /admin/revoke` — revoga o token e fecha as sessões (bridge segue de pé).
+  - `POST /admin/panic` — **parada de emergência**: mata jobs/watches, fecha
+    sessões e revoga o token.
+  - `POST /admin/status` — nº de sessões e se há token (sem segredos).
+  O **Painel de Controle** (Windows) tem botões para tudo isso.
+
+> **Honestidade:** o controle é **local** (nesta máquina). Não há dashboard
+> hospedado nem pareamento de dispositivos na nuvem — o túnel é só transporte.
+> Se um token vazar, use **Rotacionar** ou **Revogar** no painel (ou o endpoint
+> local) — não é preciso editar o `.env` à mão.
+
 - Nunca compartilhe o token nem o cole em páginas/repos.
 
 ---

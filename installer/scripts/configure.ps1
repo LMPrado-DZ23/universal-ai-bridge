@@ -40,6 +40,14 @@ function Get-Existing([string]$key) {
 $tunnelToken = Get-Existing "CLOUDFLARE_TUNNEL_TOKEN"
 $tunnelHost = Get-Existing "TUNNEL_HOSTNAME"
 
+# Segredo do plano de controle local (porta separada). Preserva se já existir.
+$adminSecret = Get-Existing "BRIDGE_ADMIN_SECRET"
+if ([string]::IsNullOrWhiteSpace($adminSecret)) {
+  $ab = New-Object 'System.Byte[]' 24
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($ab)
+  $adminSecret = -join ($ab | ForEach-Object { $_.ToString('x2') })
+}
+
 $content = @"
 BRIDGE_MODE=$Mode
 BRIDGE_ADMIN_ACK=$Ack
@@ -50,6 +58,8 @@ BRIDGE_WORKSPACE=$ws
 BRIDGE_APPROVAL=confirm
 BRIDGE_ALLOW_SHELL=$allowShell
 BRIDGE_ALLOW_DOCKER=false
+BRIDGE_ADMIN_SECRET=$adminSecret
+BRIDGE_MAX_SESSIONS=20
 CLOUDFLARE_TUNNEL_TOKEN=$tunnelToken
 TUNNEL_HOSTNAME=$tunnelHost
 "@

@@ -32,6 +32,8 @@ export interface Config {
   workspace: string;
   token: string | undefined;
   port: number;
+  adminPort: number;
+  maxSessions: number;
   allowedOrigins: string[];
   allowedHosts: string[];
   approval: ApprovalMode;
@@ -39,6 +41,7 @@ export interface Config {
   allowDocker: boolean;
   policy: PolicyFile;
   auditDir: string;
+  dataDir: string;
 }
 
 /** Carrega variáveis de um arquivo .env para process.env. Silencioso se ausente. */
@@ -148,18 +151,27 @@ export function loadConfig(): Config {
     ? resolve(process.env.BRIDGE_WORKSPACE)
     : resolve(projectRoot, "workspace");
 
-  // Pasta de auditoria: usa BRIDGE_DATA_DIR quando definido (instalação).
-  const auditDir = process.env.BRIDGE_DATA_DIR
-    ? resolve(process.env.BRIDGE_DATA_DIR, "audit")
-    : resolve(projectRoot, "audit");
+  // Pasta de dados/auditoria: usa BRIDGE_DATA_DIR quando definido (instalação).
+  const dataDir = process.env.BRIDGE_DATA_DIR ? resolve(process.env.BRIDGE_DATA_DIR) : projectRoot;
+  const auditDir = resolve(dataDir, "audit");
 
   validateToken(process.env.BRIDGE_TOKEN);
+
+  const port = parsePort(process.env.BRIDGE_PORT);
+  const adminPort = process.env.BRIDGE_ADMIN_PORT ? parsePort(process.env.BRIDGE_ADMIN_PORT) : port + 1;
+
+  const maxSessions = Number(process.env.BRIDGE_MAX_SESSIONS ?? 20);
+  if (!Number.isInteger(maxSessions) || maxSessions < 1) {
+    throw new Error(`BRIDGE_MAX_SESSIONS inválido: "${process.env.BRIDGE_MAX_SESSIONS}".`);
+  }
 
   return {
     mode,
     workspace,
     token: process.env.BRIDGE_TOKEN,
-    port: parsePort(process.env.BRIDGE_PORT),
+    port,
+    adminPort,
+    maxSessions,
     allowedOrigins: csv(process.env.BRIDGE_ALLOWED_ORIGINS),
     allowedHosts: csv(process.env.BRIDGE_ALLOWED_HOSTS),
     approval: parseApproval(process.env.BRIDGE_APPROVAL),
@@ -167,5 +179,6 @@ export function loadConfig(): Config {
     allowDocker,
     policy: loadPolicy(),
     auditDir,
+    dataDir,
   };
 }

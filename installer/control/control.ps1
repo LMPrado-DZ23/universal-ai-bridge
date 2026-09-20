@@ -10,7 +10,25 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $statePath = Join-Path $DataDir "state.json"
+$envPath = Join-Path $DataDir ".env"
 $scripts = Join-Path $InstallDir "scripts"
+
+function Get-EnvVal([string]$key) {
+  if (Test-Path $envPath) {
+    $m = Select-String -Path $envPath -Pattern "^$key=(.*)$" | Select-Object -First 1
+    if ($m) { return $m.Matches[0].Groups[1].Value.Trim() }
+  }
+  return ""
+}
+function Get-AdminPort {
+  $p = Get-EnvVal "BRIDGE_PORT"; if (-not $p) { $p = "8787" }
+  return ([int]$p + 1)
+}
+function Invoke-Admin([string]$path) {
+  $secret = Get-EnvVal "BRIDGE_ADMIN_SECRET"
+  if (-not $secret) { throw "BRIDGE_ADMIN_SECRET nao encontrado no .env" }
+  return Invoke-RestMethod -Uri "http://127.0.0.1:$(Get-AdminPort)$path" -Method Post -Headers @{ "x-admin-secret" = $secret } -TimeoutSec 5
+}
 
 function Read-State {
   if (Test-Path $statePath) {
@@ -25,7 +43,7 @@ function Test-Bridge([int]$port) {
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Universal AI Bridge"
-$form.Size = New-Object System.Drawing.Size(520, 340)
+$form.Size = New-Object System.Drawing.Size(520, 400)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedSingle"
 $form.MaximizeBox = $false
@@ -67,9 +85,27 @@ function New-Button($text, $x, $y, $w) {
 $btnChatGPT = New-Button "Abrir ChatGPT" 20 150 150
 $btnCopy = New-Button "Copiar endpoint" 180 150 150
 $btnStart = New-Button "Religar acesso" 340 150 150
-$btnStop = New-Button "Parar acesso imediatamente" 20 200 310
+$btnRotate = New-Button "Rotacionar token" 20 200 235
+$btnRevoke = New-Button "Revogar acesso remoto" 265 200 225
+$btnStop = New-Button "Parar acesso imediatamente" 20 250 310
 $btnStop.BackColor = [System.Drawing.Color]::MistyRose
-$btnUninstall = New-Button "Desinstalar" 340 200 150
+$btnUninstall = New-Button "Desinstalar" 340 250 150
+
+$btnRotate.Add_Click({
+    try {
+      $r = Invoke-Admin "/admin/rotate"
+      Set-Clipboard -Value $r.token
+      [System.Windows.Forms.MessageBox]::Show("Novo token gerado e copiado. Atualize o conector no ChatGPT/Claude com este token.", "Token rotacionado") | Out-Null
+    } catch { [System.Windows.Forms.MessageBox]::Show("Falha ao rotacionar: $_", "Erro") | Out-Null }
+  })
+
+$btnRevoke.Add_Click({
+    $r = [System.Windows.Forms.MessageBox]::Show("Revogar o token e fechar as sessões remotas agora? (o bridge continua rodando)", "Revogar", "YesNo", "Warning")
+    if ($r -eq "Yes") {
+      try { Invoke-Admin "/admin/revoke" | Out-Null; [System.Windows.Forms.MessageBox]::Show("Acesso remoto revogado. Rotacione o token para reconectar.", "Revogado") | Out-Null }
+      catch { [System.Windows.Forms.MessageBox]::Show("Falha ao revogar: $_", "Erro") | Out-Null }
+    }
+  })
 
 $btnChatGPT.Add_Click({ Start-Process "https://chatgpt.com/#settings/Connectors" })
 
@@ -91,6 +127,7 @@ $btnStop.Add_Click({
       "Encerrar o bridge e o túnel agora? O acesso remoto cai imediatamente.",
       "Parar acesso", "YesNo", "Warning")
     if ($r -eq "Yes") {
+      try { Invoke-Admin "/admin/panic" | Out-Null } catch {} # revoga token + fecha sessões na hora
       Start-Process powershell.exe -Wait -ArgumentList @(
         "-ExecutionPolicy", "Bypass", "-File", "`"$scripts\stop-access.ps1`"", "-DataDir", "`"$DataDir`""
       )
