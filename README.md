@@ -13,6 +13,14 @@ Um código, dois transportes:
 
 Arquitetura: `IA → Auth → Policy Engine → Executor → Audit`.
 
+## ⬇️ Download (Windows)
+
+Baixe o instalador pronto em **[Releases](https://github.com/LMPrado-DZ23/universal-ai-bridge/releases/latest)** →
+`UniversalAI-Bridge-Setup.exe`. Execute, siga o assistente e conecte ao ChatGPT.
+(O `.exe` não é assinado; o SmartScreen pode pedir "Mais informações → Executar assim mesmo".)
+
+Prefere rodar do código? Veja [Instalação](#2-instalação).
+
 ---
 
 ## Sumário
