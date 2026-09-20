@@ -4,11 +4,13 @@ import type { Ctx } from "./helpers.js";
 import { registerFileTools } from "./files.js";
 import { registerSearchTools } from "./search.js";
 import { registerMediaTools } from "./media.js";
+import { registerDocTools } from "./docs.js";
 import { registerWatchTools } from "./watch.js";
 import { registerPolicyTools } from "./policy.js";
 import { registerShellTools } from "./shell.js";
 import { registerEnvTools } from "./env.js";
 import { registerJobTools } from "./jobs.js";
+import { registerPtyTools } from "./pty.js";
 import { registerProcessTools } from "./process.js";
 import { registerDockerTools } from "./docker.js";
 import { registerNetTools } from "./net.js";
@@ -21,12 +23,14 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
   registerFileTools(server, ctx);
   registerSearchTools(server, ctx);
   registerMediaTools(server, ctx);
+  registerDocTools(server, ctx);
   registerWatchTools(server, ctx);
   registerPolicyTools(server, ctx);
   // Domínio de terminal (gated por allowShell).
   registerShellTools(server, ctx);
   registerEnvTools(server, ctx);
   registerJobTools(server, ctx);
+  registerPtyTools(server, ctx);
   registerProcessTools(server, ctx);
   // Modo admin.
   registerDockerTools(server, ctx);

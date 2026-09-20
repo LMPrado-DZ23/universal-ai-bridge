@@ -12,6 +12,7 @@ workspace jaulado** — nunca fora dele.
 - `write_file` · `edit_file` (replace_all, is_regex) · `make_dir` · `move_path` · `create_project`.
 - `search_files` (por nome) · `search_content` (grep/regex dentro dos arquivos).
 - `read_media_file` (imagem/binário → imagem ou base64).
+- `read_pdf` · `read_docx` · `read_sheet` (PDF/DOCX→texto, XLSX/CSV→linhas JSON; com offset/limit).
 - `watch_start` · `watch_poll` · `watch_stop` (monitorar mudanças em arquivos).
 - `get_policy` (ver allowlist/denylist e modo).
 
@@ -24,6 +25,8 @@ workspace jaulado** — nunca fora dele.
 - `job_cancel` — encerra o job e toda a árvore de processos.
 - `list_processes` — lista processos do sistema (filtro opcional).
 - `kill_process` — encerra um processo pelo PID (e sua árvore).
+- `pty_start` · `pty_output` · `pty_write` · `pty_resize` · `pty_kill` — terminal
+  interativo REAL (apps full-screen: vim, htop, REPLs). Requer @lydell/node-pty.
 - `set_env` · `unset_env` · `list_env` — variáveis de ambiente da sessão (aplicadas a run_command/run_job).
 
 **Modo admin**

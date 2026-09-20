@@ -4,6 +4,7 @@ import { startStdio } from "./transports/stdio.js";
 import { startHttp } from "./transports/http.js";
 import { JobManager } from "./jobs.js";
 import { Watcher } from "./watch.js";
+import { PtyManager } from "./pty.js";
 
 function parseTransport(): "stdio" | "http" {
   const idx = process.argv.indexOf("--transport");
@@ -31,6 +32,7 @@ async function main(): Promise<void> {
     try {
       JobManager.killAllEverywhere();
       Watcher.stopAllEverywhere();
+      PtyManager.killAllEverywhere();
     } catch {
       /* ignore */
     }

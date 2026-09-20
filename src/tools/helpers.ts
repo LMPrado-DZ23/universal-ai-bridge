@@ -4,6 +4,7 @@ import { ConfirmStore } from "../confirm.js";
 import { Audit, sanitizeArgs } from "../audit/log.js";
 import { JobManager } from "../jobs.js";
 import type { Watcher } from "../watch.js";
+import type { PtyManager } from "../pty.js";
 
 export interface Ctx {
   config: Config;
@@ -12,6 +13,7 @@ export interface Ctx {
   audit: Audit;
   jobs: JobManager;
   watcher: Watcher;
+  pty: PtyManager;
   /** Variáveis de ambiente por sessão, aplicadas a run_command/run_job. */
   sessionEnv: Record<string, string>;
 }

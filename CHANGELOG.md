@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.0 — Fase 4: paridade funcional (documentos, PTY, paginação)
+
+- **Leitura de documentos** (novas ferramentas read-only):
+  - `read_pdf` (via `pdf-parse`) — extrai texto de PDF, com paginação offset/limit.
+  - `read_docx` (via `mammoth`) — extrai texto de .docx.
+  - `read_sheet` (via `exceljs`) — lê `.xlsx` e `.csv` → linhas JSON, com paginação.
+- **Terminal interativo real (PTY)** via `@lydell/node-pty` (dependência
+  **opcional** com prebuilds; fallback explícito se indisponível):
+  `pty_start`/`pty_output`/`pty_write`/`pty_resize`/`pty_kill`. Passa pela mesma
+  política/allowlist e aprovação; resolve o executável por PATH+PATHEXT.
+- **Paginação** consolidada: `read_file` (offset/limit/tail), `job_output`
+  (cursores incrementais), leitores de documento (offset/limit) e `read_sheet`
+  (offset/max_rows).
+- **Dependências:** `pdf-parse`, `mammoth`, `exceljs` (produção); `@lydell/node-pty`
+  (opcional). `override` de `uuid` para versão corrigida → `npm audit --omit=dev` = 0.
+
+### Testes
+- 89 testes (5 novos): `read_sheet` (CSV + XLSX gerado), `read_pdf` (PDF real
+  construído no teste), `read_docx` (erro gracioso), e PTY (captura de saída real).
+
 ## 0.4.3 — Fase 5: supply-chain do instalador
 
 - **Downloads verificados (fail-closed):**
