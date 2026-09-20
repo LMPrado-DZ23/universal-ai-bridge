@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.3 — Fase 5: supply-chain do instalador
+
+- **Downloads verificados (fail-closed):**
+  - `ensure-node.ps1` fixa o Node em `v22.12.0`, verifica o **SHA-256** contra o
+    `SHASUMS256.txt` oficial **e** a **assinatura Authenticode** do MSI.
+  - `ensure-cloudflared.ps1` verifica a **assinatura Authenticode** (editor
+    `Cloudflare`) antes de instalar; versão pinável via `-Version`.
+- **SBOM:** o CI gera `sbom.cdx.json` (CycloneDX, só produção via `npm sbom`) e
+  publica junto ao `.exe` no Release, além de `SHA256SUMS.txt` do instalador.
+- **Permissões mínimas no CI:** `installer.yml` dividido em jobs `build`
+  (`contents: read`) e `release` (`contents: write`, só em tags `v*`). `ci.yml`
+  com `permissions: contents: read` e `npm audit --omit=dev` no pipeline.
+- **Actions pinadas por commit SHA** (checkout/setup-node/upload-artifact/
+  download-artifact/action-gh-release) — sem tags móveis.
+- Removido do repo o `admin.secret` vazado por teste local; `*.secret` no
+  `.gitignore` (valor era descartável, não credencial de produção).
+
 ## 0.4.2 — Fase 2: segurança operacional remota
 
 Camada de operação para o produto exposto por túnel.

@@ -1,39 +1,41 @@
-# ensure-node.ps1 — garante Node.js 22+ instalado. Usa winget; se não houver,
-# baixa o MSI oficial e instala silenciosamente. Requer privilégio de admin.
+# ensure-node.ps1 — garante Node.js 22+ instalado, verificando integridade do MSI
+# (SHA-256 do SHASUMS256.txt oficial + assinatura Authenticode). Fail-closed.
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+$NodeVersion = "v22.12.0"
+$MsiName = "node-$NodeVersion-x64.msi"
+$Base = "https://nodejs.org/dist/$NodeVersion"
 
 function Get-NodeMajor {
-  try {
-    $v = (& node --version) 2>$null
-    if ($v -match 'v(\d+)\.') { return [int]$Matches[1] }
-  } catch {}
+  try { $v = (& node --version) 2>$null; if ($v -match 'v(\d+)\.') { return [int]$Matches[1] } } catch {}
   return 0
 }
 
-$major = Get-NodeMajor
-if ($major -ge 22) {
-  Write-Output "Node.js OK (v$major)."
-  exit 0
+if ((Get-NodeMajor) -ge 22) { Write-Output "Node.js OK."; exit 0 }
+
+Write-Output "Node.js 22+ ausente. Baixando $MsiName (verificado)..."
+$msi = Join-Path $env:TEMP $MsiName
+Invoke-WebRequest -Uri "$Base/$MsiName" -OutFile $msi -UseBasicParsing
+
+# 1) SHA-256 contra o SHASUMS256.txt oficial (mesmo origin HTTPS).
+$sha = Join-Path $env:TEMP "node-SHASUMS256.txt"
+Invoke-WebRequest -Uri "$Base/SHASUMS256.txt" -OutFile $sha -UseBasicParsing
+$expected = (Select-String -Path $sha -Pattern ([regex]::Escape($MsiName)) | Select-Object -First 1).Line.Split(' ')[0].Trim().ToLower()
+if (-not $expected) { throw "Checksum de $MsiName não encontrado no SHASUMS256.txt." }
+$actual = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower()
+if ($actual -ne $expected) { Remove-Item $msi -Force; throw "SHA-256 do Node NÃO confere (esperado $expected, obtido $actual)." }
+Write-Output "SHA-256 do Node OK."
+
+# 2) Assinatura Authenticode (defesa em profundidade).
+$sig = Get-AuthenticodeSignature $msi
+if ($sig.Status -ne 'Valid') {
+  Remove-Item $msi -Force
+  throw "Assinatura Authenticode do MSI do Node inválida: $($sig.Status)."
 }
+Write-Output "Assinatura do Node OK ($($sig.SignerCertificate.Subject))."
 
-Write-Output "Node.js 22+ nao encontrado (atual: $major). Instalando..."
-
-# 1) Tenta winget.
-$winget = Get-Command winget -ErrorAction SilentlyContinue
-if ($winget) {
-  try {
-    & winget install --id OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-    if ((Get-NodeMajor) -ge 22) { Write-Output "Node instalado via winget."; exit 0 }
-  } catch { Write-Output "winget falhou: $_" }
-}
-
-# 2) Fallback: MSI oficial.
-$msiUrl = "https://nodejs.org/dist/v22.12.0/node-v22.12.0-x64.msi"
-$msi = Join-Path $env:TEMP "node-v22-x64.msi"
-Write-Output "Baixando Node MSI de $msiUrl ..."
-Invoke-WebRequest -Uri $msiUrl -OutFile $msi -UseBasicParsing
 Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-
-if ((Get-NodeMajor) -ge 22) { Write-Output "Node instalado via MSI." } else { throw "Falha ao instalar Node 22+." }
+Remove-Item $msi -Force -ErrorAction SilentlyContinue
+if ((Get-NodeMajor) -ge 22) { Write-Output "Node instalado e verificado." } else { throw "Falha ao instalar Node 22+." }

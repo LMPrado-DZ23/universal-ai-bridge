@@ -86,6 +86,16 @@ mapeie o hostname para `http://127.0.0.1:8787`, e defina no `.env`
 (`%LOCALAPPDATA%\UniversalAIBridge\.env`): `CLOUDFLARE_TUNNEL_TOKEN` e
 `TUNNEL_HOSTNAME`. O `launcher.ps1` passa a usar a URL fixa automaticamente.
 
+## Supply-chain (verificação)
+
+- **Node.js:** versão fixa (`v22.12.0`), verificado por **SHA-256** (SHASUMS256.txt
+  oficial) **e** assinatura Authenticode antes de instalar.
+- **cloudflared:** assinatura Authenticode do editor **Cloudflare** verificada
+  antes de usar (fail-closed).
+- **Release:** publica `sbom.cdx.json` (CycloneDX) e `SHA256SUMS.txt` do `.exe`.
+- **CI:** actions pinadas por commit SHA; `contents: write` só no job de release
+  (em tags `v*`).
+
 ## Limitações honestas
 
 - Sem o certificado acima, o `.exe` **não é assinado** — o SmartScreen pode
