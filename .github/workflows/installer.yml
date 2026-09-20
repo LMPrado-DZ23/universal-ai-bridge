@@ -11,6 +11,9 @@ on:
       - ".github/workflows/installer.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write # necessário para criar/atualizar o Release e anexar o .exe
+
 jobs:
   build-installer:
     runs-on: windows-latest
