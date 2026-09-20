@@ -296,7 +296,8 @@ em usuário/VM dedicados; exponha só atrás de VPN/Access; gire tokens; revise 
 offset/limit/tail), `read_multiple_files`, `get_file_info`, `read_media_file`,
 `write_file`, `edit_file` (regex / todas ocorrências), `make_dir`, `move_path`,
 `create_project`, `search_files`, `search_content` (grep).
-**Documentos:** `read_pdf`, `read_docx`, `read_sheet` (XLSX/CSV) — com paginação.
+**Documentos (ler):** `read_pdf`, `read_docx`, `read_sheet` (XLSX/CSV) — com paginação.
+**Documentos (criar):** `write_sheet` (XLSX/CSV), `write_docx`, `write_pdf`.
 **Monitoramento e política:** `watch_start`, `watch_poll`, `watch_stop`, `get_policy`.
 **Terminal e processos:** `run_command`, `run_job`, `job_status`, `job_output`,
 `job_write`, `job_cancel`, `pty_start`/`pty_output`/`pty_write`/`pty_resize`/`pty_kill`

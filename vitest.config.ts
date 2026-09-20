@@ -7,5 +7,9 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts"],
+    // Vários testes de integração sobem um servidor HTTP próprio; rodar os
+    // arquivos em série evita contenção de porta/recurso (determinístico).
+    fileParallelism: false,
+    testTimeout: 20000,
   },
 });

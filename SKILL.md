@@ -13,6 +13,7 @@ workspace jaulado** — nunca fora dele.
 - `search_files` (por nome) · `search_content` (grep/regex dentro dos arquivos).
 - `read_media_file` (imagem/binário → imagem ou base64).
 - `read_pdf` · `read_docx` · `read_sheet` (PDF/DOCX→texto, XLSX/CSV→linhas JSON; com offset/limit).
+- `write_sheet` · `write_docx` · `write_pdf` (criar XLSX/CSV, DOCX e PDF; sujeito a aprovação).
 - `watch_start` · `watch_poll` · `watch_stop` (monitorar mudanças em arquivos).
 - `get_policy` (ver allowlist/denylist e modo).
 

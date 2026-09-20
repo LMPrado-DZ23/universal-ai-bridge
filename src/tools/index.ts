@@ -5,6 +5,7 @@ import { registerFileTools } from "./files.js";
 import { registerSearchTools } from "./search.js";
 import { registerMediaTools } from "./media.js";
 import { registerDocTools } from "./docs.js";
+import { registerDocWriteTools } from "./docwrite.js";
 import { registerWatchTools } from "./watch.js";
 import { registerPolicyTools } from "./policy.js";
 import { registerShellTools } from "./shell.js";
@@ -24,6 +25,7 @@ export function registerTools(server: McpServer, ctx: Ctx): void {
   registerSearchTools(server, ctx);
   registerMediaTools(server, ctx);
   registerDocTools(server, ctx);
+  registerDocWriteTools(server, ctx);
   registerWatchTools(server, ctx);
   registerPolicyTools(server, ctx);
   // Domínio de terminal (gated por allowShell).

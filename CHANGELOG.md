@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 — Escrita de documentos + pacote de re-auditoria
+
+- **Criação de documentos** (efeito colateral, sujeito a política/aprovação):
+  - `write_sheet` (exceljs) — cria `.xlsx` ou `.csv` a partir de linhas.
+  - `write_docx` (docx) — cria `.docx` a partir de parágrafos.
+  - `write_pdf` (pdfkit) — cria `.pdf` a partir de texto.
+  Dependências novas de produção: `docx`, `pdfkit` (+ `@types/pdfkit` dev).
+  `npm audit --omit=dev` permanece **0**.
+- **Round-trip testado:** write→read para XLSX, DOCX e PDF (`docwrite.test.ts`).
+- **Testes em série** (`fileParallelism:false`): elimina contenção de porta entre
+  os testes de integração que sobem servidor HTTP (determinístico local e no CI).
+- **`AUDIT.md`:** pacote de re-auditoria (mapa achado→correção→commit + checklist).
+- Total: **92 testes** verdes.
+
 ## 0.5.0 — Fase 4: paridade funcional (documentos, PTY, paginação)
 
 - **Leitura de documentos** (novas ferramentas read-only):
