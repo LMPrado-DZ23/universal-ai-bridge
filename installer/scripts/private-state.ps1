@@ -33,7 +33,8 @@ function Write-BridgePrivateAtomic([string]$Path, [string]$Content) {
     try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
     if(Test-Path -LiteralPath $Path) {
       Set-BridgePrivate $Path
-      [System.IO.File]::Replace($temp,$Path,$null)
+      # PowerShell coerces $null to an empty string for this .NET string parameter.
+      [System.IO.File]::Replace($temp,$Path,[System.Management.Automation.Language.NullString]::Value)
     } else { [System.IO.File]::Move($temp,$Path) }
   } finally { if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp -Force} }
 }
