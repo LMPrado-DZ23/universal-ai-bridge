@@ -43,6 +43,9 @@ jobs:
       - name: Windows PowerShell 5.1 installer checks
         shell: powershell
         run: ./scripts/test-installer.ps1
+      - name: Installed Windows lifecycle
+        shell: powershell
+        run: ./scripts/test-installed-lifecycle.ps1
       - name: Generate SBOM
         shell: pwsh
         run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
