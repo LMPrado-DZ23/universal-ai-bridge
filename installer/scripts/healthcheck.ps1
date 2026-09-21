@@ -5,6 +5,11 @@ param(
   [switch]$Mcp
 )
 $ErrorActionPreference = "Stop"
+if($DataDir -and -not $PSBoundParameters.ContainsKey('Port')) {
+  $config=Join-Path $DataDir '.env'
+  $line=Select-String -LiteralPath $config -Pattern '^BRIDGE_PORT=(\d+)$' | Select-Object -First 1
+  if($line){$Port=[int]$line.Matches[0].Groups[1].Value}
+}
 $base = "http://127.0.0.1:$Port"
 
 # /health

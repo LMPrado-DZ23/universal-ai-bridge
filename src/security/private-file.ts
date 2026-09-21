@@ -16,7 +16,7 @@ export function makePrivate(path: string): void {
     '$acl.AddAccessRule($rule)',
     'Set-Acl -LiteralPath $env:UAB_PRIVATE_PATH -AclObject $acl',
   ].join(';');
-  const acl=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{
+  const acl=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{
     env:{...process.env,UAB_PRIVATE_PATH:path},windowsHide:true,timeout:10000,stdio:'ignore',shell:false,
   });
   if(acl.status!==0)throw new Error('Não foi possível aplicar ACL privada.');

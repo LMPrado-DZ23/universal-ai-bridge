@@ -47,5 +47,11 @@ try {
   try {Write-BridgePrivateAtomic $directory 'test'} catch {$blocked=$true}
   if(-not $blocked){throw 'Expected atomic replacement failure.'}
   if(Get-ChildItem -LiteralPath $temp -Filter '.private-*' -Force){throw 'Temporary credential file leaked.'}
+  # Corrupted local cloudflared is rejected before use, without downloading.
+  $bin=Join-Path $temp 'bin';New-Item -ItemType Directory -Path $bin | Out-Null
+  [System.IO.File]::WriteAllBytes((Join-Path $bin 'cloudflared.exe'),[byte[]](1,2,3))
+  $blocked=$false
+  try {& (Join-Path $PSScriptRoot '../installer/scripts/ensure-cloudflared.ps1') -InstallDir $temp} catch {$blocked=$true}
+  if(-not $blocked){throw 'Corrupted cloudflared accepted.'}
   Write-Output 'PASS: parsing, idempotence, ACL, PID identity, revocation upgrade, port conflict, unsigned gate, atomic cleanup.'
 } finally {Remove-Item $temp -Recurse -Force}

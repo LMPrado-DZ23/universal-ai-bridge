@@ -48,6 +48,8 @@ $nodeIdentity=$null; $tunnelIdentity=$null
 try {
 $nodePid = $null
 if (-not $bridgeUp) {
+  # Installer configuration is authoritative; do not inherit stale service flags.
+  Get-ChildItem Env: | Where-Object {$_.Name -like 'BRIDGE_*'} | ForEach-Object { Remove-Item -LiteralPath ("Env:"+$_.Name) }
   $env:BRIDGE_ENV_FILE = $envFile
   $env:BRIDGE_DATA_DIR = $DataDir
   $p = Start-Process -FilePath $node -ArgumentList @("`"$entry`"", "--transport", "http") `

@@ -158,7 +158,7 @@ begin
     RunPS('install-task.ps1', '-InstallDir "' + App + '" -DataDir "' + DataDir + '" -RunNow', True);
 
     // 4) Teste de saude obrigatorio.
-    RunPS('healthcheck.ps1', '-Port 8787 -DataDir "' + DataDir + '" -Mcp', True);
+    RunPS('healthcheck.ps1', '-DataDir "' + DataDir + '" -Mcp', True);
 
     // Endpoint/credenciais sao copiados apenas por acao explicita no painel.
 
