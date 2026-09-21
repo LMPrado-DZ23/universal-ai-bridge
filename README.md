@@ -1,10 +1,8 @@
 # Universal AI Bridge
 
-Um **servidor MCP local** que deixa **qualquer IA que fale MCP** — no navegador
-(ChatGPT, Claude.ai) ou local (Claude Desktop, Cursor, Gemini CLI) — programar no
-seu PC: criar/editar projetos, rodar terminal (inclusive tarefas longas e
-interativas) e, no modo admin, usar Docker. **Com dois modos de segurança
-claramente separados.**
+Servidor MCP com transportes local e remoto para operar arquivos, documentos e
+processos no computador. Compatibilidade depende de um cliente que suporte o
+transporte e a autenticação configurados. **Safe é o padrão**; acesso amplo é opt-in.
 
 Um código, dois transportes:
 
@@ -15,9 +13,10 @@ Arquitetura: `IA → Auth → Policy Engine → Executor → Audit`.
 
 ## ⬇️ Download (Windows)
 
-Baixe o instalador pronto em **[Releases](https://github.com/LMPrado-DZ23/universal-ai-bridge/releases/latest)** →
-`UniversalAI-Bridge-Setup.exe`. Execute, siga o assistente e conecte ao ChatGPT.
-(O `.exe` não é assinado; o SmartScreen pode pedir "Mais informações → Executar assim mesmo".)
+Esta PR ainda não é uma release homologada. Os builds de teste ficam em
+**Actions → Build Windows Installer → preview-unsigned-assets**, como
+`UniversalAI-Bridge-Setup-preview-unsigned.exe`. Não os trate como instalador de
+produção. Tags `v*` exigem assinatura Authenticode válida; sem certificado, falham.
 
 Prefere rodar do código? Veja [Instalação](#2-instalação).
 
@@ -48,7 +47,8 @@ O modo é escolhido por `BRIDGE_MODE`.
 
 ### Modo seguro (`safe`) — padrão
 
-- Workspace **jaulado** (nada sai da pasta configurada; symlinks para fora são bloqueados).
+- Operações de caminho restritas ao workspace; symlinks para fora são bloqueados.
+  Programas autorizados não são confinados por essa checagem.
 - Shell **desligado** por padrão; liga só com `BRIDGE_ALLOW_SHELL=true`.
 - Docker **sempre bloqueado**.
 - Ações com efeito colateral passam por aprovação (`confirm` ou `local`).
@@ -57,7 +57,7 @@ O modo é escolhido por `BRIDGE_MODE`.
 
 - Shell **ligado** por padrão; Docker liberável com `BRIDGE_ALLOW_DOCKER=true`.
 - **Exige reconhecimento explícito**: `BRIDGE_ADMIN_ACK=I_UNDERSTAND_FULL_PC_ACCESS`.
-  Sem essa frase exata, o servidor **não sobe** em modo admin (cai para safe/erro).
+  Sem essa frase exata, o servidor **não sobe** em modo admin.
 - Continua com workspace jaulado (o escopo é a raiz do workspace — amplie-a
   conscientemente se precisar).
 
@@ -72,12 +72,12 @@ permanente.
 
 ## 2. Instalação
 
-Requer **Node.js 22+**.
+Requer **Node.js 22.12+ na série 22, 24 ou 26+**.
 
 ```bash
 git clone https://github.com/LMPrado-DZ23/universal-ai-bridge.git
 cd universal-ai-bridge
-npm install
+npm ci
 npm run build
 ```
 
@@ -92,7 +92,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ## 3. Configuração `.env`
 
 Copie `env.example` para `.env`. O servidor **carrega o `.env` automaticamente**
-(via `process.loadEnvFile`, nativo do Node 22). Gere um token forte:
+(parser nativo do Node). Gere um token forte:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -106,7 +106,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 | `BRIDGE_PORT` | Porta loopback (padrão 8787). |
 | `BRIDGE_ALLOWED_ORIGINS` | Origins permitidos (CSV) — anti DNS-rebinding. |
 | `BRIDGE_WORKSPACE` | Raiz jaulada. Vazio = `./workspace`. |
-| `BRIDGE_APPROVAL` | `auto` · `confirm` (padrão) · `local`. |
+| `BRIDGE_APPROVAL` | `auto` · `confirm` (padrão) · `local` · `human_local` (HTTP). |
 | `BRIDGE_ALLOW_SHELL` | `true` liga o terminal (obrigatório no safe). |
 | `BRIDGE_ALLOW_DOCKER` | `true` libera Docker (só tem efeito no admin). |
 
@@ -165,12 +165,12 @@ CLOUDFLARE_TUNNEL_TOKEN=<token do túnel nomeado>
 TUNNEL_HOSTNAME=bridge.seudominio.com
 ```
 
-O launcher passa a usar `cloudflared tunnel run --token …` (URL fixa) em vez do
+O launcher passa a usar `cloudflared tunnel run --token-file <arquivo privado>` (URL fixa) em vez do
 túnel efêmero, automaticamente.
 
-- **ChatGPT** (Settings → Connectors / modo desenvolvedor): adicione conector MCP com
-  a URL `/mcp` e header `Authorization: Bearer <BRIDGE_TOKEN>`.
-- **Claude.ai** (Settings → Connectors → custom): mesma URL e header.
+- Configure endpoint `/mcp` e autenticação Bearer em um cliente MCP compatível.
+- ChatGPT/Claude web dependem das opções disponíveis na sua conta. Não se garante
+  suporte a headers personalizados nem aceitação automática deste endpoint.
 - Cole o conteúdo de [`SKILL.md`](./SKILL.md) nas instruções do GPT/projeto.
 
 > Túnel público temporário serve para teste. Para uso permanente, prefira
@@ -224,7 +224,7 @@ Bloqueado no modo safe. No admin, com `BRIDGE_ALLOW_DOCKER=true`, a ferramenta
   - `POST /admin/revoke` — revoga o token e fecha as sessões (bridge segue de pé).
   - `POST /admin/panic` — **parada de emergência**: mata jobs/watches, fecha
     sessões e revoga o token.
-  - `POST /admin/status` — nº de sessões e se há token (sem segredos).
+  - `GET /admin/status` — nº de sessões e se há token (sem segredos).
   O **Painel de Controle** (Windows) tem botões para tudo isso.
 
 > **Honestidade:** o controle é **local** (nesta máquina). Não há dashboard
@@ -241,7 +241,8 @@ Bloqueado no modo safe. No admin, com `BRIDGE_ALLOW_DOCKER=true`, a ferramenta
 - Auditoria append-only em `audit/audit-AAAA-MM-DD.jsonl`.
 - Registra ferramenta, decisão (allow/deny/executed/…), metadados e resultado —
   **nunca** conteúdo integral de arquivos nem segredos.
-- Falha de escrita do log **não derruba** a operação (é silenciosa).
+- `BRIDGE_AUDIT_REQUIRED=true` bloqueia mutações cobertas quando a intenção não
+  pode ser registrada. A auditoria não é inviolável pelo usuário do processo.
 
 ---
 
@@ -307,11 +308,9 @@ offset/limit/tail), `read_multiple_files`, `get_file_info`, `read_media_file`,
 
 ### Comparação com o Desktop Commander
 
-O Desktop Commander também oferece controle remoto por MCP, documentos,
-preview, streaming, sessões, histórico, Docker e opções de instalação.
-Referência: https://github.com/wonderwhy-er/DesktopCommanderMCP .
-Não há evidência nesta auditoria para declarar superioridade ou paridade completa.
-O foco verificado do Bridge é controle explícito de política, sessões, aprovação e audit.
+Veja [COMPARISON.md](./COMPARISON.md): matriz por capacidade, com estados
+implementado/parcial/não implementado/não testado. Não foi executado benchmark
+comparativo e não se afirma superioridade.
 
 Fluxo de uso detalhado em [`SKILL.md`](./SKILL.md). Política em
 [`config/policy.json`](./config/policy.json).
@@ -325,7 +324,7 @@ MIT — veja [`LICENSE`](./LICENSE).
 
 ## Revisão local de segurança sobre v0.7.0
 
-Esta revisão ainda não foi publicada. Veja `AUDIT.md` para evidências e lacunas.
+Esta revisão está na PR #1, sem nova release. Veja `AUDIT.md` para evidências e lacunas.
 
 - `run_command` aguarda um processo assíncrono, sem bloquear `/health`; informa exit code, timeout e truncamento. Usa as mesmas cotas de `run_job` e termina no encerramento da sessão.
 - `program + args` evita interpretação por shell para executáveis nativos. `.cmd/.bat` precisa de `cmd.exe` no Windows com validação restrita. Allowlist e `shell:false` são guardrails, não isolamento de programas autorizados.
@@ -348,8 +347,11 @@ Em falha, o token novo vale apenas em memória; corrija a escrita/ACL antes de r
 Revogação também tenta persistir token vazio; se falhar, reinício pode restaurar o
 valor antigo. A UI/API informa a persistência. Arquivos privados usam 0600 no POSIX
 e ACL explícita para o usuário no Windows; erro de ACL bloqueia a escrita privada.
-O `.env` deve ter precedência operacional: um BRIDGE_TOKEN herdado no ambiente do
-serviço pode sobrepor o arquivo no próximo boot e deve ser atualizado/removido.
+`BRIDGE_ENV_FILE` escolhe um único arquivo; se explícito e ilegível/ausente, a
+inicialização falha. Sem ele, usa-se `.env` do projeto. Variáveis herdadas prevalecem
+nas demais opções, mas `BRIDGE_TOKEN` presente no arquivo (inclusive vazio após
+revogação) prevalece sobre o ambiente herdado. Nenhum fallback restaura o token
+antigo. Sem token persistido, o HTTP recusa iniciar até reconfiguração local.
 
 ### Limites padrão
 
@@ -408,5 +410,25 @@ Parada valida PID, caminho, linha de comando e data de criação registrados. Es
 antigo sem identidade não é suficiente para encerrar processos. Isso reduz risco
 de PID reutilizado, mas não é uma operação atômica do kernel. `ExecutionPolicy Bypass`
 nos atalhos existentes permite executar scripts sem a política local; não equivale
-a assinatura ou verificação criptográfica. O instalador continua sem assinatura
-quando não há certificado configurado. Não considere esta revisão release homologada.
+a assinatura ou verificação criptográfica. Builds preview são unsigned; tags de produção falham
+quando não há certificado válido. Não considere esta revisão release homologada.
+
+### Limites globais e semântica de escrita
+
+Além das cotas por sessão: 256 jobs retidos, 32 PTYs retidos, 64 watchers,
+4.096 confirmações, 64 requests MCP simultâneos e 32 MB de saída por tipo de
+manager (jobs e PTYs separadamente). Workers: 2 por sessão, 4 globais. A tabela
+do rate limiter comporta 4.096 IPs e é limpa periodicamente; atrás do túnel,
+clientes compartilham o IP do proxy local (headers de IP não são confiados).
+Cursores de saída são offsets UTF-16 retornados pelo servidor; retenção é em bytes.
+
+Arquivos/documentos/downloads usam temporário no mesmo diretório, fsync e rename,
+com revalidação antes do commit. `create_project` grava arquivo por arquivo: em
+falha retorna `partial` e `completed`; não é uma transação multiarquivo. Revise
+esses caminhos antes de repetir. TOCTOU contra processos locais e durabilidade
+em queda abrupta do SO permanecem limitações; use usuário/VM/cgroups dedicados.
+
+Windows resolve `.exe/.com/.cmd/.bat`, ignorando shims POSIX sem extensão.
+Batch usa `cmd.exe` com switches fixos e argumentos restritos: aspas, expansões,
+operadores, controles e barra invertida final são recusados; use um executável
+nativo para argumentos literais desses tipos. `shell:false` permanece obrigatório.

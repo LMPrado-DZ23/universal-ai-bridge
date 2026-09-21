@@ -38,6 +38,9 @@ jobs:
       - name: Installer checks and negative signature gate
         shell: pwsh
         run: ./scripts/test-installer.ps1
+      - name: Windows PowerShell 5.1 installer checks
+        shell: powershell
+        run: ./scripts/test-installer.ps1
       - name: Generate SBOM
         shell: pwsh
         run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json

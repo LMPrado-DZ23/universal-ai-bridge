@@ -25,12 +25,15 @@ if ($Mcp) {
     "Authorization" = "Bearer $token"
   }
   $resp = Invoke-WebRequest -Uri "$base/mcp" -Method Post -Headers $headers -Body $body -TimeoutSec 8 -UseBasicParsing
+  $sid=$resp.Headers['mcp-session-id']
+  try {
   if ($resp.StatusCode -ne 200) { throw "MCP initialize falhou (HTTP $($resp.StatusCode))." }
   if ($resp.Content -notmatch "serverInfo") { throw "MCP initialize sem serverInfo." }
-  $sid=$resp.Headers['mcp-session-id']
+  } finally {
   if($sid) {
     $headers['mcp-session-id']=[string]$sid
     Invoke-WebRequest -Uri "$base/mcp" -Method Delete -Headers $headers -TimeoutSec 5 -UseBasicParsing | Out-Null
+  }
   }
   Write-Output "OK: handshake MCP (initialize) respondeu serverInfo."
 }

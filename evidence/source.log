@@ -1,5 +1,0 @@
-
-> universal-ai-bridge@0.7.0 check:source
-> node scripts/check-source.mjs
-
-UTF-8 e controles: 92 arquivos verificados.

@@ -4,10 +4,21 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 export function makePrivate(path: string): void {
   if (process.platform !== 'win32') { chmodSync(path, 0o600); return; }
-  const who = spawnSync('whoami.exe', ['/user','/fo','csv','/nh'], {encoding:'utf8',windowsHide:true,timeout:5000});
-  const sid = who.stdout?.match(/S-1-5-[0-9-]+/)?.[0];
-  if(who.status!==0 || !sid) throw new Error('Não foi possível determinar SID para ACL privada.');
-  const acl=spawnSync('icacls.exe',[path,'/inheritance:r','/grant:r',`*${sid}:(F)`],{windowsHide:true,timeout:5000});
+  // Replace the complete DACL, not just inherited rules: an explicit Everyone
+  // grant on an existing file must not survive. No credential is passed in argv.
+  const script = [
+    '$ErrorActionPreference="Stop"',
+    '$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User',
+    '$acl=New-Object System.Security.AccessControl.FileSecurity',
+    '$acl.SetAccessRuleProtection($true,$false)',
+    '$acl.SetOwner($sid)',
+    '$rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,"FullControl","Allow")',
+    '$acl.AddAccessRule($rule)',
+    'Set-Acl -LiteralPath $env:UAB_PRIVATE_PATH -AclObject $acl',
+  ].join(';');
+  const acl=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{
+    env:{...process.env,UAB_PRIVATE_PATH:path},windowsHide:true,timeout:10000,stdio:'ignore',shell:false,
+  });
   if(acl.status!==0)throw new Error('Não foi possível aplicar ACL privada.');
 }
 export function writePrivateAtomic(path:string, content:string):void {
@@ -18,6 +29,6 @@ export function writePrivateAtomic(path:string, content:string):void {
     fd=openSync(temp,'wx',0o600);
     makePrivate(temp);
     writeFileSync(fd,content,'utf8'); fsyncSync(fd);closeSync(fd);fd=undefined;
-    renameSync(temp,path);makePrivate(path);
+    renameSync(temp,path);
   } finally { if(fd!==undefined)closeSync(fd);try{unlinkSync(temp);}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;} }
 }

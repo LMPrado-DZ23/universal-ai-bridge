@@ -148,8 +148,11 @@ begin
     RunPS('ensure-cloudflared.ps1', '-InstallDir "' + App + '"', True);
 
     // 2) Configuração (token + modo).
-    RunPS('configure.ps1', '-DataDir "' + DataDir + '" -Mode ' + GetMode() +
-      ' -Ack "' + GetAck() + '" -Port 8787', True);
+    if FileExists(DataDir + '\.env') then
+      RunPS('configure.ps1', '-DataDir "' + DataDir + '"', True)
+    else
+      RunPS('configure.ps1', '-DataDir "' + DataDir + '" -Mode ' + GetMode() +
+        ' -Ack "' + GetAck() + '" -Port 8787', True);
 
     // 3) Início automático + iniciar agora (roda como usuário).
     RunPS('install-task.ps1', '-InstallDir "' + App + '" -DataDir "' + DataDir + '" -RunNow', True);

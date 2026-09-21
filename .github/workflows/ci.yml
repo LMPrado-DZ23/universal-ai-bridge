@@ -26,7 +26,7 @@ jobs:
       - run: npm run check:source
       - run: npm run build
       - run: npm run typecheck
-      - run: npm test
+      - run: npm test -- --reporter=default --reporter=json --outputFile=validation-artifacts/tests.json
       - run: npm audit --omit=dev
       - run: npm audit --audit-level=moderate
       - run: node scripts/smoke-doctor.mjs
@@ -34,3 +34,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/test-installer.ps1
+      - name: Windows PowerShell 5.1 installer checks
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/test-installer.ps1
+      - name: Generate dependency inventory
+        run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: validation-${{ matrix.os }}
+          path: |
+            validation-artifacts/*
+            sbom.cdx.json
+          if-no-files-found: warn

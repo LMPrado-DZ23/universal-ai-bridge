@@ -1,3 +1,4 @@
+import { killTree } from "./jobs.js";
 import { DEFAULT_LIMITS, type ResourceLimits } from "./config.js";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -140,6 +141,7 @@ export class PtyManager {
     const s = this.get(id);
     if (s.exited) return;
     try {
+      killTree(s.proc.pid);
       s.proc.kill();
     } catch {
       /* já morto */

@@ -13,14 +13,15 @@ function zipGuard(b: Buffer) {
   }
   if(end<0) throw new Error('ZIP inválido.');
   const entries=b.readUInt16LE(end+10), size=b.readUInt32LE(end+12), start=b.readUInt32LE(end+16);
-  if(entries>2048 || b.readUInt16LE(end+4)!==0 || b.readUInt16LE(end+6)!==0 || start+size>end) throw new Error('ZIP excede limites.');
+  if(entries>2048 || b.readUInt16LE(end+8)!==entries || b.readUInt16LE(end+4)!==0 || b.readUInt16LE(end+6)!==0 || start+size>end) throw new Error('ZIP excede limites.');
   let pos=start, total=0;
   for(let i=0;i<entries;i++) {
     if(pos+46>b.length || b.readUInt32LE(pos)!==0x02014b50) throw new Error('ZIP inválido.');
+    if(b.readUInt16LE(pos+6)>=45) throw new Error('ZIP64/versao ZIP nao suportada.');
     const flags=b.readUInt16LE(pos+8), method=b.readUInt16LE(pos+10), compressed=b.readUInt32LE(pos+20), expanded=b.readUInt32LE(pos+24), local=b.readUInt32LE(pos+42);
     total+=expanded;
     if(flags&1 || total>MAX_EXPANDED || expanded===0xffffffff || compressed===0xffffffff || local+30>start) throw new Error('Expansão ZIP excede limites.');
-    if(b.readUInt32LE(local)!==0x04034b50) throw new Error('ZIP inválido.');
+    if(b.readUInt32LE(local)!==0x04034b50 || b.readUInt16LE(local+4)>=45 || b.readUInt16LE(local+6)!==flags || b.readUInt16LE(local+8)!==method) throw new Error('ZIP inválido.');
     const data=local+30+b.readUInt16LE(local+26)+b.readUInt16LE(local+28);
     if(data+compressed>start) throw new Error('ZIP inválido.');
     const raw=b.subarray(data,data+compressed);

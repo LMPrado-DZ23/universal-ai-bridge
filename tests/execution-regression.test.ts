@@ -12,7 +12,7 @@ it('Windows lookup selects npm.cmd instead of the sibling POSIX npm script', asy
  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
  try {
   Object.defineProperty(process,'platform',{value:'win32'}); vi.stubEnv('PATH',d); vi.stubEnv('PATHEXT','.EXE;.CMD;.BAT'); vi.resetModules();
-  const {resolveExecutable} = await import('../src/exec.js'); expect(resolveExecutable('npm')).toBe(join(d,'npm.cmd'));
+  const {resolveExecutable} = await import('../src/exec.js'); expect(resolveExecutable('npm')?.toLowerCase()).toBe(join(d,'npm.cmd').toLowerCase());
  } finally { Object.defineProperty(process,'platform',platform); }
 });
 it('spawn failure retains deterministic status, sanitized stderr and no timeout', async () => {
@@ -42,3 +42,19 @@ it('batch plan uses separate fixed switches and outer command quotes',async()=>{
 it.each(['&&','|',';','>','<','%PATH%','(',')','"','\n','\r','\0','\t','\x1b','!','^'])('batch rejects reparsing syntax %j',async arg=>{
  const {batchPlan}=await import('../src/exec.js');expect(()=>batchPlan('C:\\npm.cmd',[arg])).toThrow();
 });
+it('timeout stops a live process tree without stopping an unrelated process',async()=>{
+ const {spawn}=await import('node:child_process');const {once}=await import('node:events');
+ const {existsSync,readFileSync}=await import('node:fs');
+ const d=dir(),marker=join(d,'child.txt');
+ const external=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});
+ const externalClosed=once(external,'close');
+ try {
+  const childCode="const fs=require('fs');setInterval(()=>fs.writeFileSync(process.argv[1],String(Date.now())),50)";
+  const rootCode="const {spawn}=require('child_process');spawn(process.execPath,['-e',process.argv[1],process.argv[2]],{stdio:'ignore'});setInterval(()=>{},1000)";
+  const r=await manager().run(process.execPath,['-e',rootCode,childCode,marker],d,{},1800);
+  expect(r.timedOut).toBe(true);expect(existsSync(marker)).toBe(true);
+  await new Promise(r=>setTimeout(r,150));const before=readFileSync(marker,'utf8');
+  await new Promise(r=>setTimeout(r,200));expect(readFileSync(marker,'utf8')).toBe(before);
+  expect(external.exitCode).toBeNull();expect(external.killed).toBe(false);
+ } finally {external.kill();await externalClosed;}
+},10000);

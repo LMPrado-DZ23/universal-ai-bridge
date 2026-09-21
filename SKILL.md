@@ -64,3 +64,14 @@ do processo e pode acessar recursos externos ao workspace.
 1. `run_job { command:"npm run dev", cwd:"meu-app" }` → confirma → `job_id`
 2. `job_output { job_id, since_stdout:0, since_stderr:0 }` (repita com os cursores)
 3. `job_cancel { job_id }` quando terminar
+
+## Contratos operacionais desta revisão
+
+- `create_project` não é uma transação: em erro, leia `partial` e `completed` e
+  informe ao usuário os caminhos já gravados. Não repita cegamente.
+- `human_local` exige decisão no plano admin HTTP; identificador não é autorização.
+  `confirm` é confirmação lógica; `local` transmite código pelo console local.
+- Token persistido, inclusive vazio após revogação, prevalece sobre token herdado.
+- `.cmd/.bat` no Windows tem argumentos restritos; metacaracteres são recusados.
+- Não prometa pairing, dashboard hospedado, rollback automático ou integração
+  comercial ChatGPT/Claude sem teste do cliente real. Consulte COMPARISON.md.

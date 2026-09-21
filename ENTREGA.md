@@ -1,25 +1,13 @@
-# Entrega para revisão — Universal AI Bridge
+# Revisão Universal AI Bridge v0.7.0
 
-Base: v0.7.0 / 5c3b0504b483baa825449c60475226f3b5adbc76.
+Trabalho na branch `codex/hardening-v0.7.0`, PR #1 contra `main`.
+Sem nova tag, release ou merge automático.
 
-Este pacote contém o código revisado, testes, CI, scripts e evidências. Não é uma
-release homologada. Publicação em branch e pull request autorizada pelo usuário;
-sem nova tag ou release.
+- `AUDIT.md`: resultados, riscos e limites da validação.
+- `README.md`: instalação pelo código, configuração e doctor.
+- `COMPARISON.md`: matriz factual de capacidades.
+- `installer/README.md`: contrato de preview, assinatura e homologação.
+- `evidence/results.json`: resumo das verificações; logs e SBOM nos artifacts da CI.
 
-1. Comece por AUDIT.md: correções, resultados, riscos e trabalho que falta.
-2. Consulte README.md para instalação manual, configuração e npm run doctor.
-3. Veja evidence/changed-files.txt para os arquivos alterados.
-4. evidence/tests.log contém o resultado da suíte; audit-prod.json e audit-all.json
-   contêm auditorias de dependências; sbom.json contém o inventário CycloneDX.
-5. O patch da revisão fica em review.patch na raiz do ZIP, fora desta pasta.
-
-Para revisar em checkout próprio da base, use uma branch nova e git apply --check
-antes de git apply no patch. O patch inclui correções binárias dos NUL originais.
-Não aplique cegamente sobre branches posteriores: compare e resolva diferenças.
-
-Não foram incluídos .env, tokens reais, node_modules, audit de execução ou instalador EXE.
-As configurações de teste usam tokens artificiais, sem acesso externo.
-
-BLOCKED_BY_EXTERNAL_DEPENDENCY: validação Windows/macOS, certificado, Cloudflare,
-contas/conectores reais de ChatGPT e Claude. Há também engenharia NOT_IMPLEMENTED
-listada em AUDIT.md; a meta ampla do anexo continua aberta.
+Esta revisão corrige e fortalece o servidor; não implementa todo o roadmap de
+pairing, dashboard hospedado, edição avançada de documentos e auto-update.

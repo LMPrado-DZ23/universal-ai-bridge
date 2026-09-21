@@ -1,16 +1,13 @@
-# Revisão sobre 0.7.0 — sem nova release
+# Revisão sobre 0.7.0 — PR #1, sem nova release
 
-- Execução assíncrona com cotas, timeout, truncamento por bytes e cleanup de sessão.
-- Limites de jobs, PTYs, watchers, stdin, confirmações e concorrência HTTP.
-- Worker com timeout para regex/busca/documentos; limites de expansão ZIP e paginação.
-- Confirmação vinculada ao conteúdo completo de projetos e documentos; modo human_local.
-- Schema de política, flags estritas e formato de token de 32 bytes.
-- Audit sanitizado, privado, com retenção; persistência de token verificável e revogação persistente.
-- Cloudflared fixado com checksum/editor; credencial fora de argv; parada por identidade.
-- CI Ubuntu/Windows/macOS e verificação de fontes UTF-8/controles.
-- Testes e documentação de limites reais. Sem nova tag/release.
-
-# Changelog
+- Corrige seleção de shims POSIX no Windows; npm/npx usam batch validado, mantendo shell:false.
+- Preserva erro de spawn e UTF-8 entre chunks; limites globais, lifecycle e regressões de árvore.
+- Escrita atômica de documentos/arquivos; projeto informa progresso parcial em falha.
+- Revogação persistida prevalece sobre token herdado; arquivo explícito ilegível falha fechado.
+- Configuração privada e idempotente, pré-validação de portas e limpeza no launcher.
+- Node MSI 22.23.2 com hash/editor fixados; release exige assinatura; preview unsigned separado.
+- CI multiplataforma, smoke autenticado do doctor, auditoria completa, SBOM e build do instalador.
+- Documentação e matriz comparativa factual; logs gerados movidos para artifacts.
 
 ## 0.7.0 — Fase 2: executor sem shell (program + args)
 
