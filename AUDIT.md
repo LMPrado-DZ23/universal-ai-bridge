@@ -135,3 +135,19 @@ Fontes: https://nodejs.org/api/child_process.html;
 https://nodejs.org/dist/v22.23.2/SHASUMS256.txt;
 https://github.com/cloudflare/cloudflared/releases/tag/2025.8.1;
 https://github.com/wonderwhy-er/DesktopCommanderMCP/blob/main/README.md.
+
+## Continuação: ciclo dos scripts instalados no Windows
+
+A CI agora executa `scripts/test-installed-lifecycle.ps1` em Windows PowerShell
+5.1, com cópia de dist/config/scripts, dependências por junction temporária e
+pastas com espaços. Exercita servidor MCP real, healthcheck e limpeza de sessão,
+início duplicado, preservação de configuração, rotação persistida, parada dupla,
+reinício, revogação que impede reinício, PID externo e desinstalação sem purga.
+Não instala o EXE nem automatiza o wizard/WinForms ou uma conta Cloudflare.
+
+A rodada 35555973381 reproduziu sucesso falso em stop-access com JSON inválido.
+A parada agora retorna erro sanitizado; uninstall-cleanup propaga a falha e não
+continua para purga. O painel verifica o código da parada, limpa endpoint obsoleto
+e não afirma ter copiado um endpoint ausente. Homologação visual segue pendente.
+A CI tem prazos de execução e cancela previews anteriores da mesma branch em job
+separado com permissão Actions; o job que instala dependências continua read-only.

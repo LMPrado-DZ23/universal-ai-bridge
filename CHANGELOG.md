@@ -9,6 +9,13 @@
 - CI multiplataforma, smoke autenticado do doctor, auditoria completa, SBOM e build do instalador.
 - Documentação e matriz comparativa factual; logs gerados movidos para artifacts.
 
+### Continuação da revisão 0.7.0 — instalação Windows
+
+- Teste integrado dos scripts instalados com servidor MCP real e caminhos com espaços.
+- Parada com estado inválido retorna erro; desinstalação interrompe limpeza/purga em falha.
+- Painel reporta falha de parada e remove endpoint remoto obsoleto.
+- CI limita duração e cancela previews anteriores sem ampliar permissões do build.
+
 ## 0.7.0 — Fase 2: executor sem shell (program + args)
 
 - **Sem shell interpretado no modo safe:** `run_command` e `run_job` executam via

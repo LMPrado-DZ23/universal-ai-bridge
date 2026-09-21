@@ -20,9 +20,10 @@ if ($statePath -and (Test-Path $statePath)) {
       if (Test-BridgeIdentity $identity) {
         & taskkill /PID $identity.pid /T /F 2>$null | Out-Null
         if($LASTEXITCODE -eq 0){$killed++}
+        elseif(Test-BridgeIdentity $identity){throw 'Processo identificado nao foi encerrado.'}
       } elseif ($identity) { Write-Warning 'Processo ausente ou identidade mudou; PID nao encerrado.' }
     }
-  } catch { Write-Warning "Nao foi possivel validar/parar processos: $_" }
+  } catch { throw 'Parada incompleta: estado invalido ou falha ao encerrar processo identificado. Nenhum PID sem identidade foi encerrado.' }
 } else {
   Write-Output "Aviso: state.json ausente — nenhum PID registrado para encerrar."
 }

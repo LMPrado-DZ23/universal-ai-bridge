@@ -118,7 +118,8 @@ $btnRevoke.Add_Click({
 $btnChatGPT.Add_Click({ Start-Process "https://chatgpt.com/#settings/Connectors" })
 
 $btnCopy.Add_Click({
-    if ($txtEndpoint.Text) { Set-Clipboard -Value $txtEndpoint.Text }
+    if (-not $txtEndpoint.Text) { [System.Windows.Forms.MessageBox]::Show("Nenhum endpoint remoto ativo para copiar.", "Universal AI Bridge") | Out-Null; return }
+    Set-Clipboard -Value $txtEndpoint.Text
     [System.Windows.Forms.MessageBox]::Show("Endpoint copiado:`n$($txtEndpoint.Text)", "Universal AI Bridge") | Out-Null
   })
 
@@ -136,9 +137,10 @@ $btnStop.Add_Click({
       "Parar acesso", "YesNo", "Warning")
     if ($r -eq "Yes") {
       try { Invoke-Admin "/admin/panic" | Out-Null } catch {} # revoga token + fecha sessões na hora
-      Start-Process powershell.exe -Wait -ArgumentList @(
+      $stopping = Start-Process powershell.exe -Wait -PassThru -ArgumentList @(
         "-ExecutionPolicy", "Bypass", "-File", "`"$scripts\stop-access.ps1`"", "-DataDir", "`"$DataDir`""
       )
+      if($stopping.ExitCode -ne 0){[System.Windows.Forms.MessageBox]::Show("Parada incompleta. Nao foi possivel validar o estado ou encerrar todos os processos identificados. Verifique os processos locais antes de considerar o acesso encerrado.", "Falha na parada", "OK", "Error") | Out-Null}
     }
   })
 
@@ -161,6 +163,7 @@ $timer.Add_Tick({
       $lblTunnel.ForeColor = [System.Drawing.Color]::ForestGreen
       $txtEndpoint.Text = $state.endpoint
     } else {
+      $txtEndpoint.Text = ""
       $lblTunnel.Text = "○ Túnel: sem endpoint (rode 'Religar acesso')"
       $lblTunnel.ForeColor = [System.Drawing.Color]::Gray
     }

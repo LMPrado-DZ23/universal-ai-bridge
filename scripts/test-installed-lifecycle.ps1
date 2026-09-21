@@ -81,6 +81,7 @@ try {
   if(-not (Test-BridgeIdentity $sentinelIdentity)){throw 'Mismatched identity was accepted.'}
   Write-BridgePrivateAtomic (Join-Path $data 'state.json') '{invalid-json'
   Invoke-Installed 'stop-access.ps1' $dataArgs -ExpectFailure
+  Invoke-Installed 'uninstall-cleanup.ps1' $dataArgs -ExpectFailure
   if(-not (Test-BridgeIdentity $sentinelIdentity)){throw 'Invalid state terminated unrelated process.'}
   Write-BridgePrivateAtomic (Join-Path $data 'state.json') (@{} | ConvertTo-Json)
   $preserved=[IO.File]::ReadAllText($envPath)

@@ -42,6 +42,11 @@ do usuário após CI verde e homologação Windows.
 - Parada valida identidade antes de taskkill. Desinstalação preserva workspace,
   credenciais e auditoria; purga requer opção explícita.
 
+O teste `scripts/test-installed-lifecycle.ps1` cobre inicio local, MCP autenticado,
+rotacao/reinicio, revogacao persistida, preservacao de dados e PID externo, parada
+e limpeza repetidas. JSON de estado corrompido deve falhar com codigo nao zero.
+Ele usa uma copia da aplicacao; nao executa o assistente EXE.
+
 ## Homologação necessária
 
 Em VM Windows limpa: instalar, configurar safe/admin, negar checksum/assinatura
@@ -51,7 +56,7 @@ parar duas vezes e desinstalar preservando dados. Testar também falha de instal
 no meio, pois rollback transacional completo não está implementado.
 
 `BLOCKED_BY_EXTERNAL_DEPENDENCY`: certificado de assinatura, domínio/conta
-Cloudflare e contas/clientes comerciais. CI valida PowerShell e build; uma sessão
+Cloudflare e contas/clientes comerciais. CI valida PowerShell, build e ciclo local dos scripts com servidor real; uma sessão
 Windows interativa ainda é necessária para homologar WinForms e o ciclo do wizard.
 
 Para uso pelo código-fonte, siga o README raiz e `npm run doctor`. O HTTP MCP não
