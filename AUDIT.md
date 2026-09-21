@@ -72,7 +72,14 @@ Sem banco, contas multitenant ou frontend web. Painel local Windows em WinForms.
 
 ## Validação
 
-Resultados finais e referências de CI são registrados em `evidence/results.json`.
+Resultados e referências de CI são registrados em `evidence/results.json`.
+O código em `92cc4fec71ab4f89443538f316911118c49b3eed` passou toda a matriz
+Linux/Windows/macOS (206 testes por SO), PowerShell 7/5.1 e build Inno Setup.
+O preview foi baixado: SHA-256 do ZIP e do executável conferem; SBOM CycloneDX
+contém 263 componentes e Authenticode informa NotSigned. Os checks do commit
+final de documentação também precisam passar antes do aceite do PR.
+Veredito do escopo: correções aptas à revisão/merge após esses checks; release
+de distribuição não homologada pelos bloqueios externos descritos abaixo.
 O aceite local em checkout limpo aprovou 206 testes em 25 arquivos. Os checks da PR
 são a autoridade para o SHA remoto; falha intermediária não equivale a aprovação.
 
