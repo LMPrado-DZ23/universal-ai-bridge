@@ -58,3 +58,8 @@ it('timeout stops a live process tree without stopping an unrelated process',asy
   expect(external.exitCode).toBeNull();expect(external.killed).toBe(false);
  } finally {external.kill();await externalClosed;}
 },10000);
+it('rejects native NUL arguments without reflecting argument contents', async()=>{
+ const {runStructuredSync}=await import('../src/exec.js');
+ let message='';try {runStructuredSync(process.execPath,['-e','PRIVATE_ARGUMENT_MARKER\0'],{cwd:process.cwd()});}catch(e){message=(e as Error).message;}
+ expect(message.length).toBeGreaterThan(0);expect(message.includes('PRIVATE_ARGUMENT_MARKER')).toBe(false);
+});

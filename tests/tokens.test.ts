@@ -36,7 +36,7 @@ describe("TokenStore", () => {
     expect(ts.persists).toBe(true);
     const novo = ts.rotate();
     const onDisk = readFileSync(envFile, "utf8");
-    expect(onDisk).toContain(`BRIDGE_TOKEN=${novo}`);
+    expect(onDisk.includes(`BRIDGE_TOKEN=${novo}`)).toBe(true);
     expect(onDisk).not.toContain("token-antigo-0123456789ab");
     // preserva outras chaves
     expect(onDisk).toContain("BRIDGE_MODE=safe");

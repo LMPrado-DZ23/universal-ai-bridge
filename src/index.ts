@@ -6,15 +6,15 @@ import { JobManager } from "./jobs.js";
 import { Watcher } from "./watch.js";
 import { PtyManager } from "./pty.js";
 
-function parseTransport(): "stdio" | "http" {
+function parseTransport(configured?: string): "stdio" | "http" {
   const idx = process.argv.indexOf("--transport");
-  const val = idx >= 0 ? process.argv[idx + 1] : process.env.BRIDGE_TRANSPORT;
+  const val = idx >= 0 ? process.argv[idx + 1] : process.env.BRIDGE_TRANSPORT ?? configured;
   return val === "http" ? "http" : "stdio";
 }
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const transport = parseTransport();
+  const transport = parseTransport(config.transport);
 
   let httpShutdown: (() => void) | undefined;
   if (transport === "http") {

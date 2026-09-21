@@ -26,6 +26,9 @@ jobs:
       - run: npm run check:source
       - run: npm run build
       - run: npm run typecheck
+      - name: Windows private persistence regression
+        if: runner.os == 'Windows'
+        run: npx vitest run tests/persistence-regression.test.ts
       - run: npm test -- --reporter=default --reporter=json --outputFile=validation-artifacts/tests.json
       - run: npm audit --omit=dev
       - run: npm audit --audit-level=moderate

@@ -21,7 +21,7 @@ it('serializes rotations and revocation in the same process',async()=>{
  const p=join(dir(),'.env');writeFileSync(p,'BRIDGE_TOKEN=\n');const t=new TokenStore(undefined,p);
  const values=await Promise.all(Array.from({length:12},()=>Promise.resolve().then(()=>t.rotate())));
  expect(new Set(values).size).toBe(12);expect(t.matches(values.at(-1))).toBe(true);
- expect(readFileSync(p,'utf8')).toBe(`BRIDGE_TOKEN=${values.at(-1)}\n`);
+ expect(readFileSync(p,'utf8') === `BRIDGE_TOKEN=${values.at(-1)}\n`).toBe(true);
  t.revoke();expect(readFileSync(p,'utf8')).toBe('BRIDGE_TOKEN=\n');
 });
 it('atomic write retains destination if commit guard fails and removes temporary file',()=>{
@@ -36,11 +36,16 @@ it('atomic rename failure cleans the temporary file',()=>{
 it('private atomic write applies a current-user-only ACL on Windows and 0600 on POSIX',async()=>{
  const {writePrivateAtomic}=await import('../src/security/private-file.js');
  const {statSync}=await import('node:fs');
- const p=join(dir(),'private.txt');writePrivateAtomic(p,'test data');
+ const p=join(dir(),'private.txt');writeFileSync(p,'previous data');writePrivateAtomic(p,'test data');
  expect(readFileSync(p,'utf8')).toBe('test data');
  if(process.platform!=='win32'){expect(statSync(p).mode & 0o777).toBe(0o600);return;}
  const {spawnSync}=await import('node:child_process');
  const code='$ErrorActionPreference="Stop";$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$acl=Get-Acl -LiteralPath $env:UAB_TEST_PATH;if(-not $acl.AreAccessRulesProtected){exit 2};foreach($r in $acl.Access){if($r.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid){exit 3}};if($acl.Access.Count -ne 1){exit 4}';
  const r=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(code,'utf16le').toString('base64')],{env:{...process.env,UAB_TEST_PATH:p},windowsHide:true,stdio:'ignore',timeout:10000,shell:false});
  expect(r.status).toBe(0);
+});
+it('persists into the selected config file even if its content defines another env path',()=>{
+ const d=dir(),p=join(d,'.env');writeFileSync(p,`BRIDGE_ENV_FILE=${join(d,'other.env')}\nBRIDGE_TRANSPORT=http\n`);
+ vi.stubEnv('BRIDGE_ENV_FILE',p);vi.stubEnv('BRIDGE_TRANSPORT',undefined);
+ const config=loadConfig();expect(config.envFile).toBe(p);expect(config.transport).toBe('http');
 });

@@ -31,6 +31,7 @@ export interface PolicyFile {
 
 export interface Config {
   adminSecret?: string;
+  transport?: "stdio" | "http";
   mode: BridgeMode;
   workspace: string;
   token: string | undefined;
@@ -170,7 +171,7 @@ export function loadConfig(): Config {
   // Pasta de dados/auditoria: usa BRIDGE_DATA_DIR quando definido (instalação).
   const dataDir = env.BRIDGE_DATA_DIR ? resolve(env.BRIDGE_DATA_DIR) : projectRoot;
   const auditDir = resolve(dataDir, "audit");
-  const envFile = env.BRIDGE_ENV_FILE ? resolve(env.BRIDGE_ENV_FILE) : resolve(projectRoot, ".env");
+  const envFile = resolve(selected);
 
   validateToken(env.BRIDGE_TOKEN);
 
@@ -194,6 +195,7 @@ export function loadConfig(): Config {
   return {
     mode,
     adminSecret: env.BRIDGE_ADMIN_SECRET,
+    transport: env.BRIDGE_TRANSPORT === "http" ? "http" : "stdio",
     limits: loadLimits(env),
     auditRequired: strictBoolean(env.BRIDGE_AUDIT_REQUIRED, "BRIDGE_AUDIT_REQUIRED") ?? false,
     workspace,

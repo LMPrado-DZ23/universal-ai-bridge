@@ -16,10 +16,11 @@ export function makePrivate(path: string): void {
     '$acl.AddAccessRule($rule)',
     'Set-Acl -LiteralPath $env:UAB_PRIVATE_PATH -AclObject $acl',
   ].join(';');
-  const acl=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{
-    env:{...process.env,UAB_PRIVATE_PATH:path},windowsHide:true,timeout:10000,stdio:'ignore',shell:false,
+  const guarded = `try { ${script} } catch { [Console]::Error.WriteLine($_.Exception.GetType().FullName); exit 1 }`;
+  const acl=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(guarded,'utf16le').toString('base64')],{
+    env:{...process.env,UAB_PRIVATE_PATH:path},windowsHide:true,timeout:10000,encoding:'utf8',shell:false,
   });
-  if(acl.status!==0)throw new Error('Não foi possível aplicar ACL privada.');
+  if(acl.status!==0)throw new Error(`Não foi possível aplicar ACL privada (${(acl.error as NodeJS.ErrnoException | undefined)?.code ?? acl.status}; ${acl.stderr?.match(/System\.[A-Za-z0-9.]+Exception/)?.[0] ?? 'PowerShell'}).`);
 }
 export function writePrivateAtomic(path:string, content:string):void {
   mkdirSync(dirname(path),{recursive:true,mode:0o700});

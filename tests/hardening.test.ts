@@ -93,7 +93,7 @@ describe('audit and credentials',()=>{
   const d=dir();const audit=new Audit(d,true);rmSync(d,{recursive:true});writeFileSync(d,'not-directory');expect(()=>audit.record({tool:'write_file',decision:'allow',args:{}})).toThrow(/obrigatória/);
  });
  it('rotation exposes verified persistence and failure without leaking secret',()=>{
-  const d=dir(),p=join(d,'.env');writeFileSync(p,'BRIDGE_TOKEN=old\n');const s=new TokenStore('old',p);const next=s.rotate();expect(s.persistence).toBe('persisted');expect(readFileSync(p,'utf8')).toContain(next);expect(s.matches('old')).toBe(false);
+  const d=dir(),p=join(d,'.env');writeFileSync(p,'BRIDGE_TOKEN=old\n');const s=new TokenStore('old',p);const next=s.rotate();expect(s.persistence).toBe('persisted');expect(readFileSync(p,'utf8').includes(next)).toBe(true);expect(s.matches('old')).toBe(false);
   rmSync(p);mkdirSync(p);const next2=s.rotate();expect(s.persistence).toBe('failed');expect(s.matches(next2)).toBe(true);
  });
 });

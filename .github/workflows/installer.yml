@@ -32,6 +32,8 @@ jobs:
       - run: npm run check:source
       - run: npm run build
       - run: npm run typecheck
+      - name: Windows private persistence regression
+        run: npx vitest run tests/persistence-regression.test.ts
       - run: npm test
       - run: npm audit --omit=dev
       - run: npm audit --audit-level=moderate

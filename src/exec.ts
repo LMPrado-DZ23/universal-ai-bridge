@@ -81,6 +81,7 @@ export function batchPlan(resolved: string, args: string[]): SpawnPlan {
 }
 
 function plan(program: string, args: string[]): SpawnPlan {
+  if (args.some(arg => arg.includes("\0"))) throw new Error("Argumento contém NUL; execução recusada.");
   const resolved = resolveExecutable(program);
   if (!resolved) throw Object.assign(new Error("Executável não encontrado no PATH."), { code: "ENOENT" });
   if (IS_WIN && isBatch(resolved)) return batchPlan(resolved, args);
