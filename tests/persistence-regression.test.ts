@@ -40,7 +40,7 @@ it('private atomic write applies a current-user-only ACL on Windows and 0600 on 
  expect(readFileSync(p,'utf8')).toBe('test data');
  if(process.platform!=='win32'){expect(statSync(p).mode & 0o777).toBe(0o600);return;}
  const {spawnSync}=await import('node:child_process');
- const code='$ErrorActionPreference="Stop";$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$acl=Get-Acl -LiteralPath $env:UAB_TEST_PATH;if(-not $acl.AreAccessRulesProtected){exit 2};foreach($r in $acl.Access){if($r.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid){exit 3}};if($acl.Access.Count -ne 1){exit 4}';
+ const code='$ErrorActionPreference="Stop";$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$acl=[System.IO.File]::GetAccessControl($env:UAB_TEST_PATH);$rules=$acl.GetAccessRules($true,$false,[System.Security.Principal.SecurityIdentifier]);if(-not $acl.AreAccessRulesProtected){exit 2};foreach($r in $rules){if($r.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid){exit 3}};if($rules.Count -ne 1){exit 4}';
  const r=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(code,'utf16le').toString('base64')],{env:{...process.env,UAB_TEST_PATH:p},windowsHide:true,stdio:'ignore',timeout:10000,shell:false});
  expect(r.status).toBe(0);
 });

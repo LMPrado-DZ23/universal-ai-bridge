@@ -6,15 +6,17 @@ export function makePrivate(path: string): void {
   if (process.platform !== 'win32') { chmodSync(path, 0o600); return; }
   // Replace the complete DACL, not just inherited rules: an explicit Everyone
   // grant on an existing file must not survive. No credential is passed in argv.
+  // Direct .NET APIs avoid inherited PSModulePath incompatibility when
+  // Windows PowerShell 5.1 is spawned from a PowerShell 7 runner.
   const script = [
     '$ErrorActionPreference="Stop"',
     '$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User',
-    '$acl=New-Object System.Security.AccessControl.FileSecurity',
+    '$acl=[System.Security.AccessControl.FileSecurity]::new()',
     '$acl.SetAccessRuleProtection($true,$false)',
     '$acl.SetOwner($sid)',
-    '$rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,"FullControl","Allow")',
+    '$rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,"FullControl","Allow")',
     '$acl.AddAccessRule($rule)',
-    'Set-Acl -LiteralPath $env:UAB_PRIVATE_PATH -AclObject $acl',
+    '[System.IO.File]::SetAccessControl($env:UAB_PRIVATE_PATH,$acl)',
   ].join(';');
   const guarded = `try { ${script} } catch { [Console]::Error.WriteLine($_.Exception.GetType().FullName); exit 1 }`;
   const acl=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(guarded,'utf16le').toString('base64')],{
