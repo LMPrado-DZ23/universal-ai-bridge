@@ -16,6 +16,28 @@ permissions:
   contents: read
 
 jobs:
+  cancel-stale-previews:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel superseded previews including older workflow definitions
+        shell: pwsh
+        env:
+          GH_ACTIONS_TOKEN: ${{ github.token }}
+          PREVIEW_BRANCH: ${{ github.head_ref }}
+        run: |
+          $headers=@{Authorization="Bearer $env:GH_ACTIONS_TOKEN";Accept='application/vnd.github+json'}
+          $base="$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY/actions"
+          $runs=Invoke-RestMethod -Uri "$base/workflows/installer.yml/runs?per_page=30" -Headers $headers
+          foreach($run in $runs.workflow_runs) {
+            if($run.id -ne $env:GITHUB_RUN_ID -and $run.head_branch -eq $env:PREVIEW_BRANCH -and $run.event -eq 'pull_request' -and $run.status -in @('queued','in_progress','waiting','pending')) {
+              try {Invoke-RestMethod -Method Post -Uri "$base/runs/$($run.id)/cancel" -Headers $headers | Out-Null}
+              catch {if([int]$_.Exception.Response.StatusCode -ne 409){throw 'Unable to cancel obsolete preview.'}}
+            }
+          }
   build:
     timeout-minutes: 15
     runs-on: windows-latest
