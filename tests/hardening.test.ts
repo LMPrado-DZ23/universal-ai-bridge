@@ -8,7 +8,7 @@ import { JobManager } from '../src/jobs.js';
 import { Watcher } from '../src/watch.js';
 import { Audit } from '../src/audit/log.js';
 import { TokenStore } from '../src/security/tokens.js';
-import { isolated } from '../src/isolate.js';
+import { isolated, stopIsolatedProcesses } from '../src/isolate.js';
 import { PolicyEngine } from '../src/policy/engine.js';
 const dirs:string[]=[]; const managers:JobManager[]=[];
 const dir=()=>{const d=mkdtempSync(join(tmpdir(),'bridge-hardening-'));dirs.push(d);return d;};
@@ -122,4 +122,11 @@ it('PDF subprocess abort releases global quota before returning', async () => {
 it('PDF subprocess deadline terminates its process and settles', async () => {
   const task = {kind:'document', format:'pdf', path:join(dir(),'missing.pdf'), maxBytes:2000000};
   await expect(isolated(task, 1)).rejects.toThrow(/limite/);
+});
+
+it('server shutdown stops active PDF subprocesses', async () => {
+  const work = isolated({kind:'document',format:'pdf',path:join(dir(),'missing.pdf'),maxBytes:2000000});
+  const assertion = expect(work).rejects.toThrow(/encerrada/);
+  stopIsolatedProcesses();
+  await assertion;
 });

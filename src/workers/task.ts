@@ -119,6 +119,7 @@ if (parentPort) {
   run(workerData, result => parentPort!.postMessage(result));
 } else {
   // PDF imports run on a child process main thread: native faults cannot kill the bridge.
+  process.once('disconnect', () => process.exit(0));
   process.once('message', task => run(task as Record<string, any>, result => {
     process.send!(result as object, () => process.disconnect());
   }));

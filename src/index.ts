@@ -5,6 +5,7 @@ import { startHttp } from "./transports/http.js";
 import { JobManager } from "./jobs.js";
 import { Watcher } from "./watch.js";
 import { PtyManager } from "./pty.js";
+import { stopIsolatedProcesses } from "./isolate.js";
 
 function parseTransport(configured?: string): "stdio" | "http" {
   const idx = process.argv.indexOf("--transport");
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     process.stderr.write(`[universal-ai-bridge] ${signal}: encerrando jobs e servidor…\n`);
     try {
+      stopIsolatedProcesses();
       JobManager.killAllEverywhere();
       Watcher.stopAllEverywhere();
       PtyManager.killAllEverywhere();

@@ -1,6 +1,8 @@
 import { Worker } from 'node:worker_threads';
 import { fork } from 'node:child_process';
 let active = 0;
+const pdfStops = new Set<() => void>();
+export function stopIsolatedProcesses(): void { for (const stop of pdfStops) stop(); }
 const sessions = new WeakMap<AbortSignal, number>();
 /** Fixed worker code only; callers supply data, never executable source. */
 export async function isolated<T>(task: Record<string, unknown>, timeout = 5000, signal?: AbortSignal): Promise<T> {
@@ -48,6 +50,7 @@ function isolatedPdf<T>(task: Record<string, unknown>, timeout: number, signal?:
     let failure: Error | undefined;
     const stop = (error: Error) => { failure ??= error; child.kill('SIGKILL'); };
     const abort = () => stop(new Error('Sessão encerrada.'));
+    pdfStops.add(abort);
     const timer = setTimeout(() => stop(new Error('Tempo limite de parsing/busca excedido.')), timeout);
     signal?.addEventListener('abort', abort, {once: true});
     child.once('message', message => {
@@ -60,6 +63,7 @@ function isolatedPdf<T>(task: Record<string, unknown>, timeout: number, signal?:
     });
     child.once('error', () => stop(new Error('Processo de PDF falhou.')));
     child.once('close', () => {
+      pdfStops.delete(abort);
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
       if (failure) reject(failure);
