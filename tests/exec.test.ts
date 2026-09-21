@@ -52,3 +52,20 @@ describe("runStructuredSync (shell:false)", () => {
     expect((r.stdout || "").trim()).toBe("&&echo PWNED"); // literal, não executado
   });
 });
+
+it.each(['\r', '\n', '\0', '`id`', '$(id)', 'x | y', 'x > y', 'x < y', 'x ; y'])('legacy parser rejects %j', value => {
+ expect(() => parseCommand('node ' + value)).toThrow();
+});
+it.each(['node.sh', 'node.ps1', 'node.exe.cmd', '../node', 'node\n'])('rejects program alias %j', name => {
+ expect(new PolicyEngine(policy).checkProgram(name).ok).toBe(false);
+});
+it.each(['npm','npx'])('executes %s from PATH, including Windows batch shim', program => {
+ expect(resolveExecutable(program)).toBeTruthy();
+ if(process.platform==='win32')expect(resolveExecutable(program)).toMatch(/\.cmd$/i);
+ const r=runStructuredSync(program,['--version'],{cwd:process.cwd(),timeout:30000});
+ expect(r.error).toBeUndefined();expect(r.status).toBe(0);expect(r.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+});
+it.each(['&&','|',';','>','<','%','(',')','a b'])('native executable preserves literal argument %j', literal => {
+ const r=runStructuredSync(process.execPath,['-e','process.stdout.write(process.argv[1])',literal],{cwd:process.cwd()});
+ expect(r.status).toBe(0);expect(r.stdout).toBe(literal);
+});

@@ -19,3 +19,34 @@ function Test-BridgeIdentity($Identity) {
     return $current.path -eq $Identity.path -and $current.commandLine -ceq $Identity.commandLine -and $current.created -eq $Identity.created
   } catch {return $false}
 }
+
+function Write-BridgePrivateAtomic([string]$Path, [string]$Content) {
+  $parent=Split-Path -Parent $Path
+  New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  $temp=Join-Path $parent ('.private-'+[guid]::NewGuid().ToString('N'))
+  try {
+    $stream=[System.IO.File]::Open($temp,[System.IO.FileMode]::CreateNew,[System.IO.FileAccess]::Write,[System.IO.FileShare]::None)
+    $stream.Dispose()
+    Set-BridgePrivate $temp
+    $bytes=(New-Object System.Text.UTF8Encoding($false)).GetBytes($Content)
+    $stream=[System.IO.File]::OpenWrite($temp)
+    try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+    if(Test-Path -LiteralPath $Path) {
+      Set-BridgePrivate $Path
+      [System.IO.File]::Replace($temp,$Path,$null)
+    } else { [System.IO.File]::Move($temp,$Path) }
+  } finally { if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp -Force} }
+}
+
+function Assert-BridgePortsAvailable([int[]]$Ports) {
+  $listeners=@()
+  try {
+    foreach($port in $Ports) {
+      if($port -lt 1 -or $port -gt 65535){throw 'Porta fora do intervalo.'}
+      $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$port)
+      $listener.Server.ExclusiveAddressUse=$true
+      $listener.Start(); $listeners+=,$listener
+    }
+  } catch { throw 'Porta MCP ou administrativa ocupada/invalida. Nenhum processo iniciado.' }
+  finally { foreach($listener in $listeners){$listener.Stop()} }
+}

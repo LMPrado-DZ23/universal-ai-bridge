@@ -35,6 +35,8 @@ Source: "..\dist\*"; DestDir: "{app}\app\dist"; Flags: recursesubdirs createalls
 Source: "..\node_modules\*"; DestDir: "{app}\app\node_modules"; Flags: recursesubdirs createallsubdirs
 Source: "..\config\*"; DestDir: "{app}\app\config"; Flags: recursesubdirs createallsubdirs
 Source: "..\package.json"; DestDir: "{app}\app"
+Source: "..\scripts\doctor.mjs"; DestDir: "{app}\app\scripts"
+Source: "..\env.example"; DestDir: "{app}\app"
 Source: "..\SKILL.md"; DestDir: "{app}\app"
 Source: "..\LICENSE"; DestDir: "{app}"
 Source: "scripts\*"; DestDir: "{app}\scripts"; Flags: recursesubdirs createallsubdirs
@@ -121,9 +123,14 @@ begin
   Params := '-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "' +
     ExpandConstant('{app}\scripts\') + ScriptFile + '" ' + ExtraArgs;
   if Wait then
-    Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
-  else
-    Exec('powershell.exe', Params, '', SW_HIDE, ewNoWait, ResultCode);
+  begin
+    if not Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('Nao foi possivel executar: ' + ScriptFile);
+    if ResultCode <> 0 then
+      RaiseException('Etapa falhou: ' + ScriptFile + '. Instalacao nao homologada; consulte os dados preservados.');
+  end
+  else if not Exec('powershell.exe', Params, '', SW_HIDE, ewNoWait, ResultCode) then
+    RaiseException('Nao foi possivel iniciar: ' + ScriptFile);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -147,16 +154,10 @@ begin
     // 3) Início automático + iniciar agora (roda como usuário).
     RunPS('install-task.ps1', '-InstallDir "' + App + '" -DataDir "' + DataDir + '" -RunNow', True);
 
-    // 4) Teste de saúde (best-effort; não interrompe a instalação).
+    // 4) Teste de saude obrigatorio.
     RunPS('healthcheck.ps1', '-Port 8787 -DataDir "' + DataDir + '" -Mcp', True);
 
-    // 5) Copia o endpoint atual para a área de transferência (se já houver túnel).
-    Exec('powershell.exe',
-      '-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "try { $s = Get-Content ''' +
-      DataDir + '\state.json'' -Raw | ConvertFrom-Json; if ($s.endpoint) { Set-Clipboard $s.endpoint } } catch {}"',
-      '', SW_HIDE, ewWaitUntilTerminated, RC);
+    // Endpoint/credenciais sao copiados apenas por acao explicita no painel.
 
-    // 6) Abre a página de conectores do ChatGPT.
-    ShellExec('open', 'https://chatgpt.com/#settings/Connectors', '', '', SW_SHOWNORMAL, ewNoWait, RC);
   end;
 end;

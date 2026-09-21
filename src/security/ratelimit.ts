@@ -17,21 +17,27 @@ export interface LimitResult {
  */
 export class RateLimiter {
   private buckets = new Map<string, Bucket>();
+  private timer: ReturnType<typeof setInterval>;
 
   constructor(
     private reqWindowMs = 60_000,
     private reqMax = 240,
     private failMax = 6,
     private lockBaseMs = 30_000,
-    private lockMaxMs = 15 * 60_000
+    private lockMaxMs = 15 * 60_000,
+    private capacity = 4096
   ) {
-    const t = setInterval(() => this.sweep(), 5 * 60_000);
-    (t as { unref?: () => void }).unref?.();
+    this.timer = setInterval(() => this.sweep(), 5 * 60_000);
+    (this.timer as { unref?: () => void }).unref?.();
   }
 
-  private get(ip: string): Bucket {
+  dispose(): void { clearInterval(this.timer); this.buckets.clear(); }
+
+  private get(ip: string): Bucket | undefined {
     let b = this.buckets.get(ip);
     if (!b) {
+      this.sweep();
+      if (this.buckets.size >= this.capacity) return undefined;
       b = { count: 0, windowStart: Date.now(), fails: 0, lockedUntil: 0 };
       this.buckets.set(ip, b);
     }
@@ -42,6 +48,7 @@ export class RateLimiter {
   check(ip: string): LimitResult {
     const now = Date.now();
     const b = this.get(ip);
+    if (!b) return {ok:false,reason:"Limite excedido.",retryAfterMs:this.reqWindowMs};
     if (b.lockedUntil > now) {
       return { ok: false, reason: "Temporariamente bloqueado por tentativas inválidas.", retryAfterMs: b.lockedUntil - now };
     }
@@ -59,6 +66,7 @@ export class RateLimiter {
   /** Registre uma falha de autenticação (token inválido). */
   recordAuthFailure(ip: string): void {
     const b = this.get(ip);
+    if (!b) return;
     b.fails++;
     if (b.fails >= this.failMax) {
       const over = b.fails - this.failMax;
@@ -70,6 +78,7 @@ export class RateLimiter {
   /** Autenticação bem-sucedida zera o contador de falhas. */
   recordAuthSuccess(ip: string): void {
     const b = this.get(ip);
+    if (!b) return;
     b.fails = 0;
     b.lockedUntil = 0;
   }

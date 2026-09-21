@@ -13,10 +13,11 @@ interface Pending {
  * O fingerprint garante que o token só vale para EXATAMENTE aquela ação.
  */
 export class ConfirmStore {
-  private static humanStores = new Set<ConfirmStore>();
+  private static stores = new Set<ConfirmStore>();
+  private static timer = setInterval(() => { for (const s of ConfirmStore.stores) s.sweep(); }, 10000).unref();
   private pending = new Map<string, Pending>();
   constructor(private capacity = 64, private ttlMs = 300000) {}
-  sweep(): void { for (const [id, p] of this.pending) if (p.expires <= Date.now()) this.pending.delete(id); if (!this.pending.size) ConfirmStore.humanStores.delete(this); }
+  sweep(): void { for (const [id, p] of this.pending) if (p.expires <= Date.now()) this.pending.delete(id); if (!this.pending.size) ConfirmStore.stores.delete(this); }
   get size(): number { this.sweep(); return this.pending.size; }
 
   private fingerprint(tool: string, args: Record<string, unknown>): string {
@@ -24,8 +25,11 @@ export class ConfirmStore {
   }
 
   issue(tool: string, args: Record<string, unknown>): string {
+    for (const store of ConfirmStore.stores) store.sweep();
     this.sweep();
+    if ([...ConfirmStore.stores].reduce((n,s) => n + s.pending.size, 0) >= 4096) throw new Error("Limite global de confirmações atingido.");
     if (this.pending.size >= this.capacity) throw new Error("Limite de confirmações pendentes atingido.");
+    ConfirmStore.stores.add(this);
     const token = randomBytes(32).toString("hex");
     this.pending.set(token, {
       token,
@@ -41,16 +45,16 @@ export class ConfirmStore {
     if(existing)return existing.token;
     const id=this.issue(tool,args);
     this.pending.get(id)!.human={tool,args:structuredClone(args),approved:false};
-    ConfirmStore.humanStores.add(this);
+    ConfirmStore.stores.add(this);
     return id;
   }
   static listHuman() {
     const result=[];
-    for(const store of this.humanStores) {store.sweep(); for(const p of store.pending.values()) if(p.human) result.push({id:p.token,tool:p.human.tool,args:p.human.args,expires:p.expires,approved:p.human.approved});}
+    for(const store of this.stores) {store.sweep(); for(const p of store.pending.values()) if(p.human) result.push({id:p.token,tool:p.human.tool,args:p.human.args,expires:p.expires,approved:p.human.approved});}
     return result;
   }
   static decideHuman(id:string,approve:boolean):boolean {
-    for(const store of this.humanStores) {store.sweep();const p=store.pending.get(id);if(p?.human){if(approve)p.human.approved=true;else store.pending.delete(id);return true;}}
+    for(const store of this.stores) {store.sweep();const p=store.pending.get(id);if(p?.human){if(p.human.approved)return false;if(approve)p.human.approved=true;else store.pending.delete(id);return true;}}
     return false;
   }
   consumeHuman(id:string,tool:string,args:Record<string,unknown>):boolean {
@@ -62,7 +66,7 @@ export class ConfirmStore {
   /** Limpa todas as confirmações pendentes (cleanup de sessão). */
   clear(): void {
     this.pending.clear();
-    ConfirmStore.humanStores.delete(this);
+    ConfirmStore.stores.delete(this);
   }
 
   /** Consome o token se válido e casar com a ação. Uso único. */
@@ -70,6 +74,7 @@ export class ConfirmStore {
     const p = this.pending.get(token);
     if (!p) return false;
     this.pending.delete(token);
+    if (!this.pending.size) ConfirmStore.stores.delete(this);
     if (Date.now() >= p.expires) return false;
     return p.fingerprint === this.fingerprint(tool, args);
   }

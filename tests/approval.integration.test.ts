@@ -29,3 +29,14 @@ it.each([
 it('rejects hundreds of files before an aggregate read',async()=>{
  const {client}=await connect();const result=await client.callTool({name:'read_multiple_files',arguments:{paths:Array(300).fill('a.txt')}});expect(result.isError).toBe(true);
 });
+it('create_project reports exact partial progress after a real mid-operation failure',async()=>{
+ const {workspace,client}=await connect();
+ const args={name:'partial',files:{'first.txt':'ok','first.txt/child.txt':'cannot create child beneath a file'}};
+ const first=await client.callTool({name:'create_project',arguments:args});
+ const token=JSON.stringify(first).match(/confirm_token=\\"([a-f0-9]+)\\"/)?.[1];expect(token).toBeTruthy();
+ const result=await client.callTool({name:'create_project',arguments:{...args,confirm_token:token}});
+ expect(result.isError).toBe(true);
+ const status=JSON.parse((result.content as {text:string}[])[0].text);
+ expect(status.partial).toBe(true);expect(status.completed).toEqual(['first.txt']);
+ expect(readFileSync(join(workspace,'partial/first.txt'),'utf8')).toBe('ok');
+});

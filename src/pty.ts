@@ -80,7 +80,7 @@ export class PtyManager {
   start(file: string, args: string[], cwd: string, cols: number, rows: number, env: Record<string, string>): string {
     if (this.destroyed) throw new Error("Sessão encerrada.");
     this.sweep();
-    if (this.ptys.size >= this.limits.ptys) throw new Error("Limite de PTYs atingido.");
+    if (this.ptys.size >= this.limits.ptys || [...PtyManager.all].reduce((n,p) => n + p.ptys.size, 0) >= 32) throw new Error("Limite de PTYs atingido.");
     if (!mod) throw new Error("PTY não carregado (chame loadPty antes).");
     const id = randomBytes(6).toString("hex");
     const proc = mod.spawn(resolveExecutable(file), args, {
@@ -93,9 +93,9 @@ export class PtyManager {
     const s: PtySession = { id, proc, buffer: "", exited: false, exitCode: null, truncated: false };
     proc.onData((d) => {
       const used = [...this.ptys.values()].reduce((n,p) => n + Buffer.byteLength(p.buffer), 0);
-      const room = Math.max(0, Math.min(this.maxBufferBytes - Buffer.byteLength(s.buffer), this.limits.outputBytes - used));
-      let part = Buffer.from(d).subarray(0,room).toString('utf8');
-      while (Buffer.byteLength(part) > room) part = part.slice(0,-1);
+      const room = Math.max(0, Math.min(this.maxBufferBytes - Buffer.byteLength(s.buffer), this.limits.outputBytes - used, 32_000_000 - [...PtyManager.all].reduce((n,m) => n + [...m.ptys.values()].reduce((s,p) => s + Buffer.byteLength(p.buffer),0),0)));
+      let part = '', bytes = 0;
+      for (const point of d) { const n = Buffer.byteLength(point); if (bytes+n > room) break; part += point; bytes += n; }
       s.buffer += part;
       if (Buffer.byteLength(d) > room) s.truncated = true;
     });

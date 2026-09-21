@@ -1,9 +1,9 @@
+import { writeAtomic } from "../security/atomic-file.js";
 import { isolated } from "../isolate.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   readFileSync,
-  writeFileSync,
   mkdirSync,
   readdirSync,
   statSync,
@@ -13,7 +13,7 @@ import {
 import { dirname, join, basename } from "node:path";
 import { safeResolve, display } from "../security/paths.js";
 import { sanitizeArgs } from "../audit/log.js";
-import { ok, fail, gate, type Ctx } from "./helpers.js";
+import { ok, fail, gate, assertSessionActive, type Ctx } from "./helpers.js";
 
 export function registerFileTools(server: McpServer, ctx: Ctx): void {
   const ws = ctx.config.workspace;
@@ -198,7 +198,7 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
         if (!g.proceed) return g.result;
 
         mkdirSync(dirname(abs), { recursive: true });
-        writeFileSync(abs, content, "utf8");
+        writeAtomic(abs, content, () => { assertSessionActive(ctx); safeResolve(ws, path); });
         ctx.audit.record({ tool: "write_file", decision: "executed", args: sanitizeArgs(core) });
         return ok(`✔ Escrito: ${display(ws, abs)} (${Buffer.byteLength(content)} bytes)`);
       } catch (e) {
@@ -249,7 +249,10 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
         if (!g.proceed) return g.result;
         safeResolve(ws, path);
         if(readFileSync(abs,"utf8") !== current)return fail("Arquivo alterado durante edição; refaça a leitura.");
-        writeFileSync(abs, next, "utf8");
+        writeAtomic(abs, next, () => {
+          assertSessionActive(ctx); safeResolve(ws, path);
+          if (readFileSync(abs, "utf8") !== current) throw new Error("Arquivo alterado durante edição; refaça a leitura.");
+        });
         ctx.audit.record({ tool: "edit_file", decision: "executed", args: sanitizeArgs(core) });
         const applied = replace_all ? `${count} ocorrência(s)` : "1 ocorrência";
         return ok(`✔ Editado (${applied}): ${display(ws, abs)}`);
@@ -314,7 +317,7 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Criar esqueleto de projeto",
       description:
-        "Cria uma pasta de projeto com múltiplos arquivos de uma vez. files = { 'caminho': 'conteúdo' }. Sujeito a aprovação.",
+        "Escreve arquivos atomicamente um a um; em falha retorna os caminhos já gravados (operação parcial). files = { 'caminho': 'conteúdo' }. Sujeito a aprovação.",
       inputSchema: {
         name: z.string().describe("Nome da pasta do projeto (dentro do workspace)"),
         files: z.record(z.string().max(5_000_000)).refine(v => Object.keys(v).length <= 64 && Buffer.byteLength(JSON.stringify(v)) <= ctx.config.policy.files.maxWriteBytes, "Limite agregado do projeto excedido").describe("Mapa caminho→conteúdo, relativo à pasta do projeto"),
@@ -322,6 +325,7 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
       },
     },
     async ({ name, files, confirm_token }) => {
+      const completed: string[] = [];
       try {
         const projAbs = safeResolve(ws, name);
         for (const rel of Object.keys(files)) {
@@ -334,12 +338,13 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
         for (const [rel, content] of Object.entries(files)) {
           const abs = safeResolve(ws, join(name, rel));
           mkdirSync(dirname(abs), { recursive: true });
-          writeFileSync(abs, content, "utf8");
+          writeAtomic(abs, content, () => { assertSessionActive(ctx); safeResolve(ws, join(name, rel)); });
+          completed.push(rel);
         }
         ctx.audit.record({ tool: "create_project", decision: "executed", args: { name, files: Object.keys(files) } });
         return ok(`✔ Projeto "${name}" criado com ${Object.keys(files).length} arquivo(s) em ${display(ws, projAbs)}`);
       } catch (e) {
-        return fail(String((e as Error).message));
+        return fail(JSON.stringify({ partial: completed.length > 0, completed, error: "Falha ao criar projeto; confira os caminhos concluídos antes de repetir." }));
       }
     }
   );

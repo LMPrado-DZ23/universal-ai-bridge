@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess, type SpawnSyncReturns } from "node:child_process";
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, isAbsolute, extname } from "node:path";
 import { scanShellUnsafe } from "./policy/engine.js";
 
@@ -8,13 +8,18 @@ const COMSPEC = process.env.ComSpec || "cmd.exe";
 
 /** Resolve um executável no PATH (+PATHEXT no Windows). null se não achar. */
 export function resolveExecutable(program: string): string | null {
-  if (isAbsolute(program)) return existsSync(program) ? program : null;
-  const exts = IS_WIN ? ["", ...(process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")] : [""];
+  const isFile = (p: string) => { try { return statSync(p).isFile(); } catch { return false; } };
+  const supported = /\.(exe|com|cmd|bat)$/i;
+  if (isAbsolute(program)) return (!IS_WIN || supported.test(program)) && isFile(program) ? program : null;
+  // npm ships both an extensionless POSIX script and npm.cmd. Never select
+  // the POSIX shim on Windows; CreateProcess cannot execute it (ENOEXEC).
+  const exts = IS_WIN ? (supported.test(program) ? [""] :
+    (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(e => supported.test(e))) : [""];
   for (const dir of (process.env.PATH ?? "").split(IS_WIN ? ";" : ":")) {
     if (!dir) continue;
     for (const ext of exts) {
       for (const cand of [join(dir, program + ext), join(dir, program + ext.toLowerCase())]) {
-        if (existsSync(cand)) return cand;
+        if (isFile(cand)) return cand;
       }
     }
   }
@@ -51,28 +56,34 @@ export function parseCommand(command: string): { program: string; args: string[]
 /** Args seguros para batch via cmd.exe (sem aspas/%/controle). */
 function assertBatchArgsSafe(args: string[]): void {
   for (const a of args) {
-    if (/["%\r\n\x00]/.test(a)) {
+    if (/["%&|<>^!();\x00-\x1f\x7f]/.test(a) || a.endsWith("\\")) {
       throw new Error("Argumento inseguro para script .cmd/.bat (aspas, %, ou controle).");
     }
   }
 }
 
-interface SpawnPlan {
+export interface SpawnPlan {
   file: string;
   spawnArgs: string[];
   verbatim: boolean;
 }
 
-/** Monta o plano de spawn shell:false, tratando .cmd/.bat no Windows. */
+/** Batch requires cmd.exe on Windows. Native executables never use it.
+ * No free-form command: fixed switches, quoted validated batch path and args.
+ * Batch may reparse %* (e.g. CALL), so reject metacharacters rather than
+ * assuming quotes survive every script. Use a native executable for such args.
+ */
+export function batchPlan(resolved: string, args: string[]): SpawnPlan {
+  if (/["%\x00-\x1f\x7f]/.test(resolved)) throw new Error("Caminho batch inseguro.");
+  assertBatchArgsSafe(args);
+  const inner = [resolved, ...args].map(s => `"${s}"`).join(" ");
+  return { file: COMSPEC, spawnArgs: ["/d", "/v:off", "/s", "/c", `"${inner}"`], verbatim: true };
+}
+
 function plan(program: string, args: string[]): SpawnPlan {
   const resolved = resolveExecutable(program);
-  if (!resolved) throw new Error(`Executável não encontrado no PATH: ${program}`);
-  if (IS_WIN && isBatch(resolved)) {
-    assertBatchArgsSafe([resolved, ...args]);
-    // Regra de aspas do cmd /c: o comando inteiro é envolvido por aspas extras.
-    const inner = [resolved, ...args].map((s) => `"${s}"`).join(" ");
-    return { file: COMSPEC, spawnArgs: [`/d /v:off /s /c "${inner}"`], verbatim: true };
-  }
+  if (!resolved) throw Object.assign(new Error("Executável não encontrado no PATH."), { code: "ENOENT" });
+  if (IS_WIN && isBatch(resolved)) return batchPlan(resolved, args);
   return { file: resolved, spawnArgs: args, verbatim: false };
 }
 

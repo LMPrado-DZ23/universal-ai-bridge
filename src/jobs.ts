@@ -1,5 +1,6 @@
 import { DEFAULT_LIMITS, type ResourceLimits } from "./config.js";
 import { spawnSync, type ChildProcess } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import { randomBytes } from "node:crypto";
 import { spawnStructured } from "./exec.js";
 
@@ -39,6 +40,7 @@ interface Job {
   id: string;
   command: string;
   child: ChildProcess;
+  live: boolean;
   stdout: string;
   stderr: string;
   running: boolean;
@@ -69,10 +71,15 @@ export class JobManager {
   private active(): number { return [...this.jobs.values()].filter(j => j.running).length; }
   private outputBytes(): number { return [...this.jobs.values()].reduce((n,j) => n + Buffer.byteLength(j.stdout) + Buffer.byteLength(j.stderr), 0); }
   async run(program: string, args: string[], cwd: string, env: Record<string,string>, timeout: number) {
-    const id = this.start(program, args, cwd, env);
+    let id: string;
+    try { id = this.start(program, args, cwd, env); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return {status: -1, stdout: "", stderr: "[spawn error] ENOENT", truncated: false, timedOut: false};
+    }
     const j = this.get(id);
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; this.cancel(id); }, timeout);
+    const timer = setTimeout(() => { if (j.running) { timedOut = true; if (j.live && j.child.pid) killTree(j.child.pid); else { j.child.stdout?.destroy(); j.child.stderr?.destroy(); } } }, timeout);
     try {
       await new Promise<void>(resolve => {
         j.child.once('close', () => resolve());
@@ -95,7 +102,7 @@ export class JobManager {
     this.sweep();
     const globalActive = [...JobManager.all].reduce((n,m) => n + m.active(), 0);
     if (this.active() >= this.limits.activeJobs || globalActive >= this.limits.globalJobs) throw new Error("Limite de jobs ativos atingido.");
-    if (this.jobs.size >= this.limits.retainedJobs) throw new Error("Limite de jobs retidos atingido; aguarde o TTL.");
+    if (this.jobs.size >= this.limits.retainedJobs || [...JobManager.all].reduce((n,m) => n + m.jobs.size, 0) >= 256) throw new Error("Limite de jobs retidos atingido; aguarde o TTL.");
     const id = randomBytes(6).toString("hex");
     const child = spawnStructured(program, args, { cwd, env: extraEnv });
 
@@ -103,6 +110,7 @@ export class JobManager {
       id,
       command: `${program} ${args.join(" ")}`.trim(),
       child,
+      live: true,
       stdout: "",
       stderr: "",
       running: true,
@@ -111,28 +119,39 @@ export class JobManager {
       truncated: false,
     };
 
-    const append = (key: "stdout" | "stderr", chunk: Buffer) => {
-      const room = Math.max(0, Math.min(this.maxBufferBytes - Buffer.byteLength(job.stdout) - Buffer.byteLength(job.stderr), this.limits.outputBytes - this.outputBytes()));
-      const text = chunk.subarray(0, room).toString("utf8");
-      // Remove an incomplete UTF-8 tail rather than exceeding the byte budget.
-      let bounded = text;
-      while (Buffer.byteLength(bounded) > room) bounded = bounded.slice(0, -1);
-      job[key] += bounded;
-      if (chunk.length > room) job.truncated = true;
+    const decoders = {stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8')};
+    const append = (key: "stdout" | "stderr", text: string) => {
+      const room = Math.max(0, Math.min(this.maxBufferBytes - Buffer.byteLength(job.stdout) - Buffer.byteLength(job.stderr), this.limits.outputBytes - this.outputBytes(), 32_000_000 - [...JobManager.all].reduce((n,m) => n + m.outputBytes(), 0)));
+      let bytes = 0, end = 0;
+      for (const point of text) {
+        const size = Buffer.byteLength(point);
+        if (bytes + size > room) break;
+        bytes += size; end += point.length;
+      }
+      job[key] += text.slice(0, end);
+      if (end < text.length) job.truncated = true;
     };
 
-    child.stdin?.on("error", () => append("stderr", Buffer.from("[stdin unavailable]")));
-    child.stdout?.on("data", (c: Buffer) => append("stdout", c));
-    child.stderr?.on("data", (c: Buffer) => append("stderr", c));
+    child.stdin?.on("error", () => append("stderr", "[stdin unavailable]"));
+    child.stdout?.on("data", (c: Buffer) => append("stdout", decoders.stdout.write(c)));
+    child.stderr?.on("data", (c: Buffer) => append("stderr", decoders.stderr.write(c)));
+    let spawnFailed = false;
     child.on("error", (err) => {
-      append("stderr", Buffer.from("[spawn error] " + (err as NodeJS.ErrnoException).code));
+      spawnFailed = true;
+      job.live = false;
+      append("stderr", "[spawn error] " + ((err as NodeJS.ErrnoException).code ?? "UNKNOWN"));
       job.endedAt = Date.now();
       job.running = false;
       job.exitCode = -1;
     });
+    // Drop live PID ownership on exit, before pipes close (descendants can
+    // keep them open). Never taskkill a PID after its process has exited.
+    child.on("exit", () => { job.live = false; });
     child.on("close", (code) => {
+      append("stdout", decoders.stdout.end());
+      append("stderr", decoders.stderr.end());
       job.endedAt = Date.now();
-      job.exitCode = code;
+      job.exitCode = spawnFailed ? -1 : code;
       job.running = false;
     });
 
@@ -150,7 +169,7 @@ export class JobManager {
   /** true se o PID pertence a um job iniciado por este manager. */
   ownsPid(pid: number): boolean {
     for (const j of this.jobs.values()) {
-      if (j.running && j.child.pid === pid) return true;
+      if (j.live && j.child.pid === pid) return true;
     }
     return false;
   }
@@ -197,7 +216,8 @@ export class JobManager {
 
   cancel(id: string): void {
     const j = this.get(id);
-    if (j.running && j.child.pid) killTree(j.child.pid);
+    if (j.live && j.child.pid) killTree(j.child.pid);
+    else if (j.running) { j.child.stdout?.destroy(); j.child.stderr?.destroy(); }
   }
 
   killAll(): void {

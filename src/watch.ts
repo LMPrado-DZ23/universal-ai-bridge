@@ -35,7 +35,7 @@ export class Watcher {
 
   start(absPath: string, displayPath: string, recursive: boolean): string {
     if (this.destroyed) throw new Error("Sessão encerrada.");
-    if (this.entries.size >= this.maxActive) throw new Error("Limite de watchers atingido.");
+    if (this.entries.size >= this.maxActive || [...Watcher.all].reduce((n,w) => n + w.entries.size, 0) >= 64) throw new Error("Limite de watchers atingido.");
     const id = randomBytes(5).toString("hex");
     const fsw = watch(absPath, { recursive }, (eventType, filename) => {
       const entry = this.entries.get(id);

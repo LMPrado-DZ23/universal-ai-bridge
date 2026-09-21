@@ -111,7 +111,7 @@ export class PolicyEngine {
    */
   checkProgram(program: string): Decision {
     const raw = program.trim();
-    if (!raw) return { ok: false, reason: "Programa vazio" };
+    if (!raw || raw !== program || !/^[a-zA-Z0-9_-]+(?:\.(?:exe|cmd|bat|com))?$/.test(raw)) return { ok: false, reason: "Nome de programa inválido" };
     if (/[/\\:]/.test(raw)) {
       return { ok: false, reason: "Use o nome do binário (sem caminho); ele é resolvido pelo PATH." };
     }

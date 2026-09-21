@@ -6,6 +6,7 @@ param(
   [Parameter(Mandatory = $true)][string]$DataDir
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $InstallDir "scripts/private-state.ps1")
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -100,8 +101,9 @@ $btnApprovals.Add_Click({
 $btnRotate.Add_Click({
     try {
       $r = Invoke-Admin "/admin/rotate"
-      Set-Clipboard -Value $r.token
-      [System.Windows.Forms.MessageBox]::Show("Novo token gerado e copiado. Persistencia: $($r.persistence). Atualize o conector no ChatGPT/Claude com este token.", "Token rotacionado") | Out-Null
+      $copy=[System.Windows.Forms.MessageBox]::Show("Copiar o novo token para a area de transferencia? Persistencia: $($r.persistence)", "Token rotacionado", "YesNo", "Warning", "Button2")
+      if($copy -eq 'Yes'){Set-Clipboard -Value $r.token}
+      [System.Windows.Forms.MessageBox]::Show("Novo token gerado. Persistencia: $($r.persistence). Atualize o conector no ChatGPT/Claude com este token.", "Token rotacionado") | Out-Null
     } catch { [System.Windows.Forms.MessageBox]::Show("Falha ao rotacionar: $_", "Erro") | Out-Null }
   })
 
@@ -151,11 +153,11 @@ $timer.Interval = 3000
 $timer.Add_Tick({
     $state = Read-State
     $port = if ($state) { [int]$state.port } else { 8787 }
-    $up = Test-Bridge $port
+    $up = $state -and (Test-BridgeIdentity $state.nodeIdentity) -and (Test-Bridge $port)
     $lblBridge.Text = if ($up) { "● Bridge: ATIVO (porta $port)" } else { "○ Bridge: parado" }
     $lblBridge.ForeColor = if ($up) { [System.Drawing.Color]::ForestGreen } else { [System.Drawing.Color]::Gray }
-    if ($state -and $state.endpoint) {
-      $lblTunnel.Text = "● Túnel: ativo"
+    if ($state -and $state.endpoint -and (Test-BridgeIdentity $state.tunnelIdentity)) {
+      $lblTunnel.Text = "● Tunel: processo ativo (conectividade remota nao verificada)"
       $lblTunnel.ForeColor = [System.Drawing.Color]::ForestGreen
       $txtEndpoint.Text = $state.endpoint
     } else {
@@ -167,3 +169,5 @@ $timer.Add_Tick({
 $timer.Start()
 $form.Add_Shown({ $form.Activate() })
 [void]$form.ShowDialog()
+
+$timer.Stop(); $timer.Dispose(); $form.Dispose()

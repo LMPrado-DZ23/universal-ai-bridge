@@ -44,11 +44,11 @@ async function main(): Promise<void> {
 
   // Não deixa uma rejeição não tratada derrubar o processo silenciosamente.
   process.on("unhandledRejection", (reason) => {
-    process.stderr.write(`[universal-ai-bridge] unhandledRejection: ${String(reason)}\n`);
+    process.stderr.write(`[universal-ai-bridge] unhandledRejection: erro interno (detalhes omitidos)\n`);
   });
 }
 
 main().catch((err) => {
-  process.stderr.write(`[universal-ai-bridge] fatal: ${String(err)}\n`);
+  process.stderr.write(`[universal-ai-bridge] fatal: falha de inicialização (verifique configuração, arquivos privados e portas)\n`);
   process.exit(1);
 });

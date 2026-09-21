@@ -1,13 +1,13 @@
+import { writeAtomic } from "../security/atomic-file.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname, extname } from "node:path";
+import { extname } from "node:path";
 import ExcelJS from "exceljs";
 import { Document, Packer, Paragraph } from "docx";
 import PDFDocument from "pdfkit";
 import { safeResolve, display } from "../security/paths.js";
 import { sanitizeArgs } from "../audit/log.js";
-import { ok, fail, gate, type Ctx } from "./helpers.js";
+import { ok, fail, gate, assertSessionActive, type Ctx } from "./helpers.js";
 
 /** Escrita de documentos (efeito colateral): sujeita a política e aprovação. */
 export function registerDocWriteTools(server: McpServer, ctx: Ctx): void {
@@ -36,13 +36,11 @@ export function registerDocWriteTools(server: McpServer, ctx: Ctx): void {
         const wb = new ExcelJS.Workbook();
         const sh = wb.addWorksheet(sheet);
         for (const r of rows) sh.addRow(r);
-        mkdirSync(dirname(abs), { recursive: true });
         const buf = Buffer.from(extname(abs).toLowerCase() === '.csv' ? await wb.csv.writeBuffer() : await wb.xlsx.writeBuffer());
-        if (buf.length > ctx.config.policy.files.maxWriteBytes) return fail('Documento excede limite de escrita.');
         if (buf.length > ctx.config.policy.files.maxWriteBytes) return fail("Documento excede limite de escrita.");
         if(ctx.isDisposed?.())return fail("Sessão encerrada.");
         safeResolve(ws,path);
-        writeFileSync(abs, buf);
+        writeAtomic(abs, buf, () => { assertSessionActive(ctx); safeResolve(ws, path); });
         ctx.audit.record({ tool: "write_sheet", decision: "executed", args: core });
         return ok(`✔ Planilha escrita: ${display(ws, abs)} (${rows.length} linha(s))`);
       } catch (e) {
@@ -72,11 +70,10 @@ export function registerDocWriteTools(server: McpServer, ctx: Ctx): void {
         if (!g.proceed) return g.result;
         const doc = new Document({ sections: [{ children: paragraphs.map((t) => new Paragraph({ text: t })) }] });
         const buf = await Packer.toBuffer(doc);
-        mkdirSync(dirname(abs), { recursive: true });
         if (buf.length > ctx.config.policy.files.maxWriteBytes) return fail("Documento excede limite de escrita.");
         if(ctx.isDisposed?.())return fail("Sessão encerrada.");
         safeResolve(ws,path);
-        writeFileSync(abs, buf);
+        writeAtomic(abs, buf, () => { assertSessionActive(ctx); safeResolve(ws, path); });
         ctx.audit.record({ tool: "write_docx", decision: "executed", args: core });
         return ok(`✔ DOCX escrito: ${display(ws, abs)} (${paragraphs.length} parágrafo(s))`);
       } catch (e) {
@@ -105,7 +102,6 @@ export function registerDocWriteTools(server: McpServer, ctx: Ctx): void {
         if (!dec.ok) return fail(`Bloqueado pela política: ${dec.reason}`);
         const g = gate(ctx, "write_pdf", { path, text, font_size }, confirm_token);
         if (!g.proceed) return g.result;
-        mkdirSync(dirname(abs), { recursive: true });
         const buf: Buffer = await new Promise((resolve, reject) => {
           const doc = new PDFDocument();
           const chunks: Buffer[] = [];
@@ -118,7 +114,7 @@ export function registerDocWriteTools(server: McpServer, ctx: Ctx): void {
         if (buf.length > ctx.config.policy.files.maxWriteBytes) return fail("Documento excede limite de escrita.");
         if(ctx.isDisposed?.())return fail("Sessão encerrada.");
         safeResolve(ws,path);
-        writeFileSync(abs, buf);
+        writeAtomic(abs, buf, () => { assertSessionActive(ctx); safeResolve(ws, path); });
         ctx.audit.record({ tool: "write_pdf", decision: "executed", args: sanitizeArgs(core) });
         return ok(`✔ PDF escrito: ${display(ws, abs)} (${buf.length} bytes)`);
       } catch (e) {

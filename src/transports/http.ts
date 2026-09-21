@@ -17,6 +17,7 @@ import { startAdmin } from "./admin.js";
 
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 const SWEEP_MS = 60 * 1000;
+let globalRequests = 0;
 
 interface Entry {
   transport: StreamableHTTPServerTransport;
@@ -31,8 +32,8 @@ function clientIp(req: Request): string {
 
 /** Garante o segredo do admin: usa BRIDGE_ADMIN_SECRET ou gera e grava (0600). */
 function ensureAdminSecret(config: Config): string {
-  if (process.env.BRIDGE_ADMIN_SECRET && process.env.BRIDGE_ADMIN_SECRET.length >= 16) {
-    return process.env.BRIDGE_ADMIN_SECRET;
+  if (config.adminSecret && config.adminSecret.length >= 16) {
+    return config.adminSecret;
   }
   const secret = randomBytes(24).toString("hex");
   mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
@@ -89,6 +90,14 @@ export async function startHttp(config: Config): Promise<() => void> {
     }
     limiter.recordAuthSuccess(ip);
     const sid = req.header('mcp-session-id');
+    if (sid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)) { res.status(400).json({error:'Sessão inválida.'}); return; }
+    if(req.method !== 'DELETE') {
+      if(globalRequests >= 64) { res.status(429).json({error:'Limite global de requests.'}); return; }
+      globalRequests++;
+      let released=false;
+      const release=()=>{if(!released){released=true;globalRequests--;}};
+      res.once('finish',release);res.once('close',release);
+    }
     const entry = sid ? sessions[sid] : undefined;
     if (entry && req.method !== 'DELETE') {
       if (entry.requests >= (config.limits ?? DEFAULT_LIMITS).concurrentRequests) { res.status(429).json({error:'Limite de requests simultâneos atingido.'}); return; }
@@ -167,6 +176,9 @@ export async function startHttp(config: Config): Promise<() => void> {
   app.get("/mcp", sessionRequest);
   app.delete("/mcp", sessionRequest);
 
+  app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    res.status((error as {status?:number}).status === 413 ? 413 : 400).json({error:'Requisição inválida.'});
+  });
   app.get("/health", (_req, res) => res.json({ ok: true }));
 
   const sweep = setInterval(() => {
@@ -205,6 +217,7 @@ export async function startHttp(config: Config): Promise<() => void> {
 
   return () => {
     clearInterval(sweep);
+    limiter.dispose();
     closeAllSessions();
     httpServer.close();
     admin.close();

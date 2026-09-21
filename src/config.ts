@@ -1,3 +1,4 @@
+import { parseEnv } from "node:util";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -29,6 +30,7 @@ export interface PolicyFile {
 }
 
 export interface Config {
+  adminSecret?: string;
   mode: BridgeMode;
   workspace: string;
   token: string | undefined;
@@ -146,27 +148,35 @@ function csv(v: string | undefined): string[] {
 }
 
 export function loadConfig(): Config {
-  // Carrega o .env ANTES de ler process.env. Ordem: BRIDGE_ENV_FILE (definido
-  // pelo instalador, aponta p/ a pasta de dados) e depois o .env do projeto.
-  if (process.env.BRIDGE_ENV_FILE) applyEnvFile(process.env.BRIDGE_ENV_FILE);
-  applyEnvFile(resolve(projectRoot, ".env"));
+  // Explicit file replaces the project file, never silently falls back.
+  // Inherited settings win, except a persisted token (including revocation ""):
+  // restarting must not resurrect the old inherited credential.
+  const selected = process.env.BRIDGE_ENV_FILE || resolve(projectRoot, ".env");
+  let fileEnv: NodeJS.ProcessEnv = {};
+  try { fileEnv = parseEnv(readFileSync(selected, "utf8")); }
+  catch (error) {
+    if (process.env.BRIDGE_ENV_FILE || (error as NodeJS.ErrnoException).code !== "ENOENT")
+      throw new Error("BRIDGE_ENV_FILE não pôde ser carregado.");
+  }
+  const env: NodeJS.ProcessEnv = { ...fileEnv, ...process.env };
+  if (Object.hasOwn(fileEnv, "BRIDGE_TOKEN")) env.BRIDGE_TOKEN = fileEnv.BRIDGE_TOKEN;
 
-  const { mode, allowShell, allowDocker } = resolveMode(process.env);
+  const { mode, allowShell, allowDocker } = resolveMode(env);
 
-  const workspace = process.env.BRIDGE_WORKSPACE
-    ? resolve(process.env.BRIDGE_WORKSPACE)
+  const workspace = env.BRIDGE_WORKSPACE
+    ? resolve(env.BRIDGE_WORKSPACE)
     : resolve(projectRoot, "workspace");
 
   // Pasta de dados/auditoria: usa BRIDGE_DATA_DIR quando definido (instalação).
-  const dataDir = process.env.BRIDGE_DATA_DIR ? resolve(process.env.BRIDGE_DATA_DIR) : projectRoot;
+  const dataDir = env.BRIDGE_DATA_DIR ? resolve(env.BRIDGE_DATA_DIR) : projectRoot;
   const auditDir = resolve(dataDir, "audit");
-  const envFile = process.env.BRIDGE_ENV_FILE ? resolve(process.env.BRIDGE_ENV_FILE) : resolve(projectRoot, ".env");
+  const envFile = env.BRIDGE_ENV_FILE ? resolve(env.BRIDGE_ENV_FILE) : resolve(projectRoot, ".env");
 
-  validateToken(process.env.BRIDGE_TOKEN);
+  validateToken(env.BRIDGE_TOKEN);
 
-  const port = parsePort(process.env.BRIDGE_PORT);
+  const port = parsePort(env.BRIDGE_PORT);
   // adminPort: validado APÓS derivar o default (port+1 pode estourar 65535).
-  const adminPort = process.env.BRIDGE_ADMIN_PORT ? parsePort(process.env.BRIDGE_ADMIN_PORT) : port + 1;
+  const adminPort = env.BRIDGE_ADMIN_PORT ? parsePort(env.BRIDGE_ADMIN_PORT) : port + 1;
   if (adminPort < 1 || adminPort > 65535) {
     throw new Error(
       `Porta admin inválida (${adminPort}). BRIDGE_PORT+1 estourou o limite — defina BRIDGE_ADMIN_PORT (1–65535).`
@@ -176,23 +186,24 @@ export function loadConfig(): Config {
     throw new Error("BRIDGE_ADMIN_PORT não pode ser igual a BRIDGE_PORT.");
   }
 
-  const maxSessions = Number(process.env.BRIDGE_MAX_SESSIONS ?? 20);
+  const maxSessions = Number(env.BRIDGE_MAX_SESSIONS ?? 20);
   if (!Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 100) {
-    throw new Error(`BRIDGE_MAX_SESSIONS inválido: "${process.env.BRIDGE_MAX_SESSIONS}".`);
+    throw new Error(`BRIDGE_MAX_SESSIONS inválido: "${env.BRIDGE_MAX_SESSIONS}".`);
   }
 
   return {
     mode,
-    limits: loadLimits(process.env),
-    auditRequired: strictBoolean(process.env.BRIDGE_AUDIT_REQUIRED, "BRIDGE_AUDIT_REQUIRED") ?? false,
+    adminSecret: env.BRIDGE_ADMIN_SECRET,
+    limits: loadLimits(env),
+    auditRequired: strictBoolean(env.BRIDGE_AUDIT_REQUIRED, "BRIDGE_AUDIT_REQUIRED") ?? false,
     workspace,
-    token: process.env.BRIDGE_TOKEN,
+    token: env.BRIDGE_TOKEN,
     port,
     adminPort,
     maxSessions,
-    allowedOrigins: csv(process.env.BRIDGE_ALLOWED_ORIGINS),
-    allowedHosts: csv(process.env.BRIDGE_ALLOWED_HOSTS),
-    approval: parseApproval(process.env.BRIDGE_APPROVAL),
+    allowedOrigins: csv(env.BRIDGE_ALLOWED_ORIGINS),
+    allowedHosts: csv(env.BRIDGE_ALLOWED_HOSTS),
+    approval: parseApproval(env.BRIDGE_APPROVAL),
     allowShell,
     allowDocker,
     policy: loadPolicy(),

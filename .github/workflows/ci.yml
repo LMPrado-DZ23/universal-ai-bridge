@@ -28,6 +28,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm audit --omit=dev
+      - run: npm audit --audit-level=moderate
+      - run: node scripts/smoke-doctor.mjs
       - name: Windows installer script checks
         if: runner.os == 'Windows'
         shell: pwsh

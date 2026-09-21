@@ -62,7 +62,7 @@ export function gate(
     if (ctx.config.approval === "local") {
       // Preview LEGÍVEL só no console local (o humano decide). Não vai ao audit
       // nem ao modelo — o audit acima já registra apenas metadados.
-      const localPreview = JSON.stringify(coreArgs).slice(0, 300);
+      const localPreview = JSON.stringify(sanitizeArgs(coreArgs));
       process.stderr.write(
         `\n[APROVAÇÃO LOCAL] ${tool} ${localPreview}\n` +
           `  código: ${token}\n` +
@@ -96,4 +96,9 @@ export function gate(
     };
   }
   return { proceed: true };
+}
+
+/** Revalidate immediately before filesystem commit. */
+export function assertSessionActive(ctx: Ctx): void {
+  if (ctx.isDisposed?.() || ctx.signal?.aborted) throw new Error("Sessão encerrada.");
 }

@@ -1,15 +1,15 @@
+import { writeAtomic } from "../security/atomic-file.js";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname, extname } from "node:path";
+import { extname } from "node:path";
 import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { safeResolve, display } from "../security/paths.js";
 import { sanitizeUrl } from "../audit/log.js";
-import { ok, fail, gate, type Ctx } from "./helpers.js";
+import { ok, fail, gate, assertSessionActive, type Ctx } from "./helpers.js";
 
 const MAX_REDIRECTS = 5;
 const TIMEOUT_MS = 30000;
@@ -123,10 +123,9 @@ export function registerNetTools(server: McpServer, ctx: Ctx): void {
         const deadline = AbortSignal.timeout(TIMEOUT_MS);
         const signal = ctx.signal ? AbortSignal.any([deadline,ctx.signal]) : deadline;
         const buf = await downloadPublic(url,max,signal);
-        mkdirSync(dirname(abs), { recursive: true });
         if(ctx.isDisposed?.())return fail("Sessão encerrada.");
         safeResolve(ctx.config.workspace,dest);
-        writeFileSync(abs, buf);
+        writeAtomic(abs, buf, () => { assertSessionActive(ctx); safeResolve(ctx.config.workspace, dest); });
         ctx.audit.record({ tool: "download_to_file", decision: "executed", args: { url: sanitizeUrl(url), dest }, detail: `${buf.length} bytes; ext=${extname(dest)}` });
         return ok(`✔ Baixado ${buf.length} bytes → ${display(ctx.config.workspace, abs)}`);
       } catch (e) {

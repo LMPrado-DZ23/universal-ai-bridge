@@ -53,6 +53,7 @@ export class TokenStore {
   }
 
   /** Gera e passa a exigir um novo token; persiste se possível. Devolve o valor. */
+  // Synchronous read/write/rename: serialized by the JS event loop in this process.
   rotate(): string {
     const token = randomBytes(32).toString("hex");
     this.current = token;

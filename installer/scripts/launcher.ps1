@@ -41,6 +41,11 @@ if ($bridgeUp) {
   }
   throw 'Porta ocupada por processo nao identificado. Nenhum processo iniciado.'
 }
+$adminPort = Get-EnvValue 'BRIDGE_ADMIN_PORT'
+if(-not $adminPort){$adminPort=[int]$port+1}
+Assert-BridgePortsAvailable @([int]$port,[int]$adminPort)
+$nodeIdentity=$null; $tunnelIdentity=$null
+try {
 $nodePid = $null
 if (-not $bridgeUp) {
   $env:BRIDGE_ENV_FILE = $envFile
@@ -48,6 +53,7 @@ if (-not $bridgeUp) {
   $p = Start-Process -FilePath $node -ArgumentList @("`"$entry`"", "--transport", "http") `
     -WindowStyle Hidden -PassThru
   $nodePid = $p.Id
+  $nodeIdentity=Get-BridgeIdentity $nodePid
   $ready=$false
   for($attempt=0;$attempt -lt 30;$attempt++) {
     if($p.HasExited){throw 'Bridge encerrou durante inicializacao.'}
@@ -62,17 +68,18 @@ $tunnelHost = ""
 $tunnelPid = $null
 if (-not $NoTunnel) {
   $cf = Join-Path $InstallDir "bin\cloudflared.exe"
+  if (-not (Test-Path $cf)) { throw "cloudflared ausente." }
+  & (Join-Path $PSScriptRoot "ensure-cloudflared.ps1") -InstallDir $InstallDir
   if (Test-Path $cf) {
     if ($tunnelToken) {
       # Túnel NOMEADO: URL fixa configurada na sua conta Cloudflare.
       $tokenFile=Join-Path $DataDir 'tunnel.token'
-      if(-not (Test-Path $tokenFile)){New-Item -ItemType File -Path $tokenFile | Out-Null}
-      Set-BridgePrivate $tokenFile
-      [System.IO.File]::WriteAllText($tokenFile,$tunnelToken,(New-Object System.Text.UTF8Encoding($false)))
+      Write-BridgePrivateAtomic $tokenFile $tunnelToken
       $tp = Start-Process -FilePath $cf `
         -ArgumentList @("tunnel", "--no-autoupdate", "run", "--token-file", "`"$tokenFile`"") `
         -WindowStyle Hidden -PassThru
       $tunnelPid = $tp.Id
+      $tunnelIdentity=Get-BridgeIdentity $tunnelPid
       if ($tunnelHostname) {
         $tunnelHost = "https://$tunnelHostname"
         $endpoint = "$tunnelHost/mcp"
@@ -85,6 +92,7 @@ if (-not $NoTunnel) {
         -ArgumentList @("tunnel", "--url", "http://127.0.0.1:$port", "--no-autoupdate") `
         -WindowStyle Hidden -PassThru -RedirectStandardError $log -RedirectStandardOutput (Join-Path $DataDir "tunnel.out.log")
       $tunnelPid = $tp.Id
+      $tunnelIdentity=Get-BridgeIdentity $tunnelPid
       for ($i = 0; $i -lt 50; $i++) {
         Start-Sleep -Milliseconds 500
         if (Test-Path $log) {
@@ -103,14 +111,19 @@ $state = [ordered]@{
   bridgeUp   = $true
   endpoint   = $endpoint
   tunnelHost = $tunnelHost
-  nodeIdentity = if($nodePid){Get-BridgeIdentity $nodePid}else{$null}
-  tunnelIdentity = if($tunnelPid){Get-BridgeIdentity $tunnelPid}else{$null}
+  nodeIdentity = $nodeIdentity
+  tunnelIdentity = $tunnelIdentity
   nodePid    = $nodePid
   tunnelPid  = $tunnelPid
   updatedAt  = (Get-Date).ToString("o")
 }
 $stateFile=Join-Path $DataDir 'state.json'
-if(-not (Test-Path $stateFile)){New-Item -ItemType File -Path $stateFile | Out-Null}
-Set-BridgePrivate $stateFile
-$state | ConvertTo-Json -Depth 5 | Set-Content -Path $stateFile -Encoding UTF8
+Write-BridgePrivateAtomic $stateFile ($state | ConvertTo-Json -Depth 5)
 Write-Output "Bridge na porta $port. Endpoint: $(if($endpoint){$endpoint}else{'(sem tunel)'})"
+
+} catch {
+  foreach($identity in @($tunnelIdentity,$nodeIdentity)) {
+    if($identity -and (Test-BridgeIdentity $identity)) { & taskkill /PID $identity.pid /T /F 2>$null | Out-Null }
+  }
+  throw 'Falha ao iniciar bridge/tunel; processos desta tentativa foram encerrados quando identificados.'
+}

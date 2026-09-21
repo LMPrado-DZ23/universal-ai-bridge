@@ -85,8 +85,8 @@ export function registerJobTools(server: McpServer, ctx: Ctx): void {
         "Retorna a saída nova desde os cursores dados. Chame repetidamente passando os cursores retornados para 'streamar' a saída.",
       inputSchema: {
         job_id: z.string(),
-        since_stdout: z.number().default(0).describe("Cursor de stdout (use o nextStdoutCursor anterior)"),
-        since_stderr: z.number().default(0).describe("Cursor de stderr (use o nextStderrCursor anterior)"),
+        since_stdout: z.number().int().min(0).default(0).describe("Cursor de stdout (use o nextStdoutCursor anterior)"),
+        since_stderr: z.number().int().min(0).default(0).describe("Cursor de stderr (use o nextStderrCursor anterior)"),
       },
     },
     async ({ job_id, since_stdout, since_stderr }) => {

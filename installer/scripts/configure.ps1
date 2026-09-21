@@ -9,6 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "private-state.ps1")
 
+if($Port -lt 1 -or $Port -gt 65534){throw 'Porta invalida.'}
+if($Mode -eq 'admin' -and $Ack -cne 'I_UNDERSTAND_FULL_PC_ACCESS'){throw 'Admin exige reconhecimento explicito.'}
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $ws = Join-Path $DataDir "workspace"
 New-Item -ItemType Directory -Force -Path $ws | Out-Null
@@ -64,14 +66,19 @@ BRIDGE_MAX_SESSIONS=20
 CLOUDFLARE_TUNNEL_TOKEN=$tunnelToken
 TUNNEL_HOSTNAME=$tunnelHost
 "@
-# Escreve SEM BOM: um BOM na 1ª linha corromperia a chave BRIDGE_MODE
-# (e o modo cairia silenciosamente para safe).
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-if(-not (Test-Path $envFile)){New-Item -ItemType File -Path $envFile | Out-Null}
-Set-BridgePrivate $envFile
-[System.IO.File]::WriteAllText($envFile, $content, $utf8NoBom)
-
-Write-Output "Config escrita em $envFile (modo=$Mode, porta=$Port, workspace=$ws)"
-
-. (Join-Path $PSScriptRoot "private-state.ps1")
-Set-BridgePrivate (Join-Path $DataDir ".env")
+# Preserve all existing settings on upgrade. Explicit mode/port choices update
+# only their own keys; an empty persisted token remains revoked.
+if (Test-Path $envFile) {
+  $content=[System.IO.File]::ReadAllText($envFile)
+  $updates=@{}
+  if($PSBoundParameters.ContainsKey('Mode')) {
+    $updates.BRIDGE_MODE=$Mode; $updates.BRIDGE_ADMIN_ACK=$Ack; $updates.BRIDGE_ALLOW_SHELL=$allowShell
+  }
+  if($PSBoundParameters.ContainsKey('Port')){$updates.BRIDGE_PORT=[string]$Port}
+  foreach($key in $updates.Keys) {
+    $content=[regex]::Replace($content,"(?m)^$key=.*(?:\r?\n|$)",'')
+    $content=$content.TrimEnd()+"`n$key=$($updates[$key])`n"
+  }
+}
+Write-BridgePrivateAtomic $envFile $content
+Write-Output "Configuracao gravada com ACL privada."

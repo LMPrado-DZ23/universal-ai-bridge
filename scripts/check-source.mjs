@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, extname } from 'node:path';
-const allowed=new Set(['.ts','.js','.mjs','.json','.md','.yml','.yaml','.ps1']);
+const allowed=new Set(['.ts','.js','.mjs','.json','.md','.yml','.yaml','.ps1','.iss','.example']);
 let count=0;
 function walk(dir) {
   for(const e of readdirSync(dir,{withFileTypes:true})) {
-    if(['.git','node_modules','dist','audit','workspace'].includes(e.name))continue;
+    if(['.git','node_modules','dist','audit','workspace','validation-artifacts','dist-release','Output'].includes(e.name))continue;
     const p=join(dir,e.name);
     if(e.isDirectory())walk(p);
     else if(allowed.has(extname(p))) {

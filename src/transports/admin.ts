@@ -26,7 +26,7 @@ export interface AdminDeps {
  */
 export function startAdmin(port: number, deps: AdminDeps): { close: () => void } {
   const app = express();
-  app.use(express.json({ limit: "16kb" }));
+
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     const provided = req.header("x-admin-secret") ?? "";
@@ -37,7 +37,11 @@ export function startAdmin(port: number, deps: AdminDeps): { close: () => void }
     next();
   });
 
-  app.get('/admin/approvals', (_req,res) => {res.setHeader('Cache-Control','no-store');res.json(ConfirmStore.listHuman());});
+  app.use(express.json({limit:"16kb"}));
+  app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    res.status((error as {status?:number}).status === 413 ? 413 : 400).json({error:'Requisição inválida.'});
+  });
+  app.get('/admin/approvals' , (_req,res) => {res.setHeader('Cache-Control','no-store');res.json(ConfirmStore.listHuman());});
   app.post('/admin/approvals/:id', (req,res) => {
     if (typeof req.body?.approve !== 'boolean') {res.status(400).json({error:'approve deve ser boolean'});return;}
     const found=ConfirmStore.decideHuman(String(req.params.id),req.body.approve);

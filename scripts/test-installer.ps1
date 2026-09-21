@@ -21,5 +21,31 @@ try {
   if(-not (Test-BridgeIdentity $identity)){throw 'Own process identity not recognized.'}
   $identity.created='2000-01-01T00:00:00Z'
   if(Test-BridgeIdentity $identity){throw 'Reused PID would be accepted.'}
-  Write-Output 'PASS: PowerShell parsing, configure idempotence, private ACL, PID identity.'
+  # A revoked credential and custom options must survive upgrade configuration.
+  $custom="BRIDGE_TOKEN=`nBRIDGE_APPROVAL=human_local`nBRIDGE_PORT=8787`nCUSTOM_SETTING=keep`n"
+  Write-BridgePrivateAtomic (Join-Path $temp '.env') $custom
+  & (Join-Path $PSScriptRoot '../installer/scripts/configure.ps1') -DataDir $temp
+  if([System.IO.File]::ReadAllText((Join-Path $temp '.env')) -cne $custom){throw 'Upgrade changed persisted configuration/revocation.'}
+  # Actual socket conflict, not a mocked health response.
+  $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,0)
+  $listener.Start()
+  try {
+    $port=$listener.LocalEndpoint.Port
+    $blocked=$false
+    try { Assert-BridgePortsAvailable @($port) } catch {$blocked=$true}
+    if(-not $blocked){throw 'Occupied port was accepted.'}
+  } finally {$listener.Stop()}
+  Assert-BridgePortsAvailable @($port)
+  # A real unsigned script must be refused by the production release gate.
+  $blocked=$false
+  try { & (Join-Path $PSScriptRoot '../installer/scripts/assert-release.ps1') -File $PSCommandPath -Production } catch {$blocked=$true}
+  if(-not $blocked){throw 'Unsigned production artifact accepted.'}
+  & (Join-Path $PSScriptRoot '../installer/scripts/assert-release.ps1') -File $PSCommandPath
+  # Rename failure must retain destination and remove private temporary files.
+  $directory=Join-Path $temp 'directory'; New-Item -ItemType Directory $directory | Out-Null
+  $blocked=$false
+  try {Write-BridgePrivateAtomic $directory 'test'} catch {$blocked=$true}
+  if(-not $blocked){throw 'Expected atomic replacement failure.'}
+  if(Get-ChildItem -LiteralPath $temp -Filter '.private-*' -Force){throw 'Temporary credential file leaked.'}
+  Write-Output 'PASS: parsing, idempotence, ACL, PID identity, revocation upgrade, port conflict, unsigned gate, atomic cleanup.'
 } finally {Remove-Item $temp -Recurse -Force}
