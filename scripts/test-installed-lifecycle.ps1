@@ -18,7 +18,9 @@ function Invoke-Installed([string]$Script,[string[]]$Arguments=@(),[switch]$Expe
   $file=Join-Path $install ('scripts/'+$Script)
   $out=Join-Path $temp 'child.stdout';$err=Join-Path $temp 'child.stderr'
   $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$file+'"'))+$Arguments
-  $p=Start-Process powershell.exe -ArgumentList $args -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
+  $p=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
+  # Wait only for the script, not the long-lived bridge it starts.
+  if(-not $p.WaitForExit(30000)){$p.Kill();throw "Installed script timed out: $Script"}
   if($ExpectFailure) {if($p.ExitCode -eq 0){throw "Expected rejection: $Script"}}
   elseif($p.ExitCode -ne 0){throw "Installed script failed: $Script (exit $($p.ExitCode)); child output withheld."}
 }
@@ -75,6 +77,10 @@ try {
   Write-BridgePrivateAtomic (Join-Path $data 'state.json') (@{nodeIdentity=$wrong} | ConvertTo-Json -Depth 5)
   Invoke-Installed 'stop-access.ps1' $dataArgs
   if(-not (Test-BridgeIdentity $sentinelIdentity)){throw 'Mismatched identity was accepted.'}
+  Write-BridgePrivateAtomic (Join-Path $data 'state.json') '{invalid-json'
+  Invoke-Installed 'stop-access.ps1' $dataArgs -ExpectFailure
+  if(-not (Test-BridgeIdentity $sentinelIdentity)){throw 'Invalid state terminated unrelated process.'}
+  Write-BridgePrivateAtomic (Join-Path $data 'state.json') (@{} | ConvertTo-Json)
   $preserved=[IO.File]::ReadAllText($envPath)
   Invoke-Installed 'uninstall-cleanup.ps1' $dataArgs
   Invoke-Installed 'uninstall-cleanup.ps1' $dataArgs

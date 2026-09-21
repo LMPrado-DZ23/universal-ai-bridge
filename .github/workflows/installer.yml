@@ -8,11 +8,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: installer-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   build:
+    timeout-minutes: 15
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -45,6 +50,7 @@ jobs:
         run: ./scripts/test-installer.ps1
       - name: Installed Windows lifecycle
         shell: powershell
+        timeout-minutes: 3
         run: ./scripts/test-installed-lifecycle.ps1
       - name: Generate SBOM
         shell: pwsh
