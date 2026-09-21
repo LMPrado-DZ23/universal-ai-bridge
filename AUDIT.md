@@ -1,70 +1,191 @@
-# Pacote de re-auditoria — Universal AI Bridge
+# Auditoria Universal AI Bridge — PR #1
 
-Documento para o auditor. Resume o que mudou desde a auditoria de `2b78384`
-(v0.4.0), mapeia cada achado anterior à sua correção e ao commit, e lista o que
-re-verificar.
+Escopo: branch `codex/hardening-v0.7.0` contra `main`, versão mantida em 0.7.0.
+Sem merge, tag ou release nesta execução. Esta revisão não homologa o produto para
+uso final nem conclui o roadmap de funcionalidades ausentes.
 
-## Alvo a revisar
+## Baseline e reprodução
 
-- Repositório: https://github.com/LMPrado-DZ23/universal-ai-bridge
-- Tag/commit atual: **v0.6.0** (`main`)
-- Diff sugerido: `2b78384..HEAD`
-- Histórico de releases: v0.4.1 (segurança), v0.4.2 (Fase 2), v0.4.3 (Fase 5),
-  v0.5.0 (Fase 4 leitura), v0.6.0 (Fase 4b escrita).
+Base v0.7.0: `5c3b0504b483baa825449c60475226f3b5adbc76` (82 blobs conferidos em
+`evidence/source-provenance.json`). A primeira revisão publicada foi
+`94bfc5b1e495d383b6693c5272241ed044023e14`.
 
-## Como reproduzir os gates
+- Baseline local: npm ci, check:source, build, typecheck, 146 testes e auditorias
+  completas/produção passaram no Linux Node 24.19.0.
+- CI original: Ubuntu/macOS passaram; Windows falhou em npm com status null.
+  Run: https://github.com/LMPrado-DZ23/universal-ai-bridge/actions/runs/35545939884
+- Regressões antes da correção: `npx vitest run tests/execution-regression.test.ts`
+  reproduziu 4 falhas: seleção do shim POSIX, status de spawn sobrescrito,
+  executável ausente sem resultado determinístico e UTF-8 fragmentado corrompido.
+- `tests/persistence-regression.test.ts` reproduziu restauração do token herdado
+  após revogação e fallback indevido quando o arquivo explícito não existia.
+- A primeira nova rodada remota confirmou npm/npx reais no Windows corrigidos,
+  mas detectou comparação case-sensitive no teste do caminho npm.CMD. O teste foi
+  ajustado ao contrato de caminhos, mantendo a asserção contra o shim sem extensão.
+- Windows confirmou 206 testes, incluindo npm/npx, PTY, árvore de processos e
+  persistência privada. A DACL usa APIs .NET em Windows PowerShell, evitando
+  dependência de módulos herdados do PowerShell 7. O teste verifica a ACL real.
+- A regressão de upgrade detectou coerção de `$null` para caminho vazio em
+  File.Replace; corrigida com NullString para preservar substituição atômica.
+- PowerShell 5.1 revelou erro de parsing por UTF-8 sem BOM; scripts com texto
+  não ASCII agora têm BOM e check:source impede a regressão de codificação.
 
-```bash
-npm ci
-npm run typecheck
-npm run build
-npm test              # 92 testes, arquivos em série (fileParallelism:false)
-npm audit --omit=dev  # deve ser 0
-git diff --check
-```
+## Arquitetura e correções
 
-## Achados anteriores → correção
+TypeScript ESM, MCP stdio/HTTP, Express, política JSON e recursos por sessão.
+Sem banco, contas multitenant ou frontend web. Painel local Windows em WinForms.
 
-| # | Achado | Correção | Onde | Teste |
-|---|---|---|---|---|
-| C1 | Bypass de shell por `&`/newline | `scanShellUnsafe` ciente de aspas (rejeita `; \| & < > ( )` fora de aspas, `$`/crase fora de aspas simples, controles) | `src/policy/engine.ts` | `policy.test.ts`, `stage2.test.ts` (endpoint real) |
-| C2 | SSRF por redirect no download | `redirect:"manual"`, revalida cada host (A/AAAA), bloqueia privados/loopback/CGNAT/IPv6, timeout, teto de redirects e bytes | `src/tools/net.ts` | `net.test.ts`, `stage2.test.ts` |
-| C3 | Symlink lido na busca | `lstat`+skip de symlink no walk + `safeResolve` antes de ler | `src/tools/search.ts` | `search.test.ts` |
-| C4 | `confirm` não é aprovação humana | Modo `local` (código só no console local) + docs honestas; `confirm` documentado como 2 etapas | `src/tools/helpers.ts` | — |
-| C5 | Admin ≠ acesso irrestrito | Modos safe/admin explícitos; escopo = workspace; documentado | `src/config.ts`, README | `mode.test.ts` |
-| C6 | Sessão HTTP fraca | Rate limit+lockout, limite de sessões, ownership por sessão, rotação/revogação/panic local | `src/security/*`, `src/transports/{http,admin}.ts` | `ratelimit/tokens/phase2.test.ts` |
-| C7 | `kill_process` PID arbitrário | Só processos do bridge; externo exige admin+`allow_external` | `src/tools/process.ts`, `src/jobs.ts` | `stage2.test.ts` |
-| C8 | `set_env` variáveis sensíveis | Denylist (`PATH`,`NODE_OPTIONS`,`LD_PRELOAD`,…) | `src/tools/env.ts` | `stage2.test.ts` |
-| C9 | Docker `shell:true` sem parser | Mesmo `scanShellUnsafe` nos args | `src/tools/docker.ts` | — |
-| C10 | Sem limites agregados | Teto de saída/arquivo/watch/jobs; leitura paginada | vários | — |
-| C11 | `/health` vaza caminho | `/health` → `{ok:true}` | `src/transports/http.ts` | `integration.http.test.ts` |
-| C12 | Auditoria frágil | append-only, sanitiza args, nunca derruba a operação | `src/audit/log.ts` | — |
-| C13 | Config aceita inválidos | Fail-closed: porta 1–65535, modo/approval válidos, token forte anti-placeholder | `src/config.ts` | `config.test.ts` |
-| C14 | `.env` com BOM | UTF-8 sem BOM em `configure.ps1` e `setup.ps1` | `installer/scripts/*` | — |
-| C15 | Downloads sem checksum | Node: SHA-256 (SHASUMS) + Authenticode; cloudflared: Authenticode (fail-closed) | `installer/scripts/ensure-*.ps1` | — |
-| C16 | Actions sem SHA / perm ampla | Actions pinadas por SHA; `contents:write` só no job de release | `.github/workflows/*` | — |
-| C17 | Versão divergente | Versão única em package/server/Inno | — | — |
-| C18 | Arquivos-lixo + NUL | Removidos; `search.ts` reescrito UTF-8; `*.secret`/lixo no `.gitignore` | — | — |
+- Windows resolve apenas formatos suportados; não seleciona o shim POSIX npm.
+  Batch usa cmd.exe com switches separados, aspas externas e argumentos restritos.
+  Executáveis nativos continuam shell:false. Parser/allowlist têm regressões.
+- Jobs assíncronos preservam status -1 de spawn e timedOut=false; StringDecoder
+  preserva UTF-8 entre chunks. PID deixa de ser propriedade viva no evento exit.
+  Timeout/cancelamento testam árvore ativa sem encerrar processo externo.
+- Cotas por sessão e globais para jobs/retidos, PTYs, watchers, confirmações,
+  saída, workers e requests; rate limiter limita buckets e descarta timer no close.
+  Recursos e decisões são descartados com a sessão. Cursores são offsets UTF-16,
+  enquanto limites de retenção são calculados em bytes.
+- PDF é processado em subprocesso com timeout/cancelamento, mesma cota global e
+  heap limitado; falha nativa fica fora do servidor. Demais documentos/regex usam
+  workers limitados; ZIP valida diretório, tamanho real,
+  flags locais e ZIP64; documentos têm teto antes de parsing.
+- Escrita em temporário, fsync e rename de arquivos/documentos/downloads, com
+  revalidação no commit. create_project retorna caminhos concluídos em falha
+  parcial real. Removida validação duplicada no gerador de planilha.
+- Aprovação vinculada a conteúdo, TTL, uso único, recusa e decisão local. Segunda
+  aprovação local é rejeitada. Console local mostra metadados em vez do conteúdo.
+- Token persistido, inclusive vazio, prevalece sobre token herdado. Arquivo
+  explícito ausente/ilegível falha fechado. Rotações síncronas são serializadas
+  pelo event loop; não se oferece coordenação entre múltiplos processos.
+- Arquivos privados POSIX 0600; Windows substitui a DACL por regra do usuário.
+  Erro de ACL impede escrita do segredo. Logs HTTP/erros não refletem corpos.
+- Doctor valida autenticação, initialize, tools/list, DELETE e recusa HTTP remoto;
+  smoke verifica zero sessões restantes e encerra o processo.
+- Instalador preserva configuração/revogação em upgrade, usa escrita privada
+  atômica, valida portas e identidade de PID e limpa tentativas de inicialização.
+  Inno propaga erro das etapas. Token Cloudflare permanece em arquivo privado.
+- Node MSI 22.23.2 com hash fixado e editor OpenJS Foundation; cloudflared 2025.8.1
+  com hash/editor fixados. Binário inválido é recusado, sem fallback latest.
+- CI sem filtros de paths incompletos; matriz Node 22 nos três SOs, auditorias,
+  PowerShell 7/5.1, SBOM e compilação do instalador. Preview unsigned separado;
+  produção exige certificado e Authenticode válido. Senha de assinatura fora do argv.
+- Removidos resíduos de .gitignore e logs/SBOM gerados da árvore. Relatórios grandes
+  ficam em artifacts. Matriz comparativa factual em COMPARISON.md.
 
-## O que re-verificar com prioridade
+## Validação
 
-1. **C1** no endpoint MCP real: `run_command` com `&`, newline, `$()`, crase → bloqueado; `node -e "console.log(1>0)"` → permitido (arg entre aspas).
-2. **C2**: um domínio público que redireciona para `127.0.0.1` deve ser bloqueado no salto final (teste com servidor de redirect ao vivo — cobrimos por unidade em `isPrivateIp` + `manual`).
-3. **C3**: symlink de arquivo dentro do workspace apontando para fora não deve ser lido por `search_content`/`read_*`.
-4. **Fase 2**: rotação invalida token antigo; `panic` revoga e derruba; lockout retorna 429; ownership entre sessões.
-5. **Fase 5**: no CI, `installer.yml` verifica assinatura dos downloads e publica SBOM+SHA256SUMS; `contents:write` só no `release`.
+Resultados e referências de CI são registrados em `evidence/results.json`.
+O código em `92cc4fec71ab4f89443538f316911118c49b3eed` passou toda a matriz
+Linux/Windows/macOS (206 testes por SO), PowerShell 7/5.1 e build Inno Setup.
+O preview foi baixado: SHA-256 do ZIP e do executável conferem; SBOM CycloneDX
+contém 263 componentes e Authenticode informa NotSigned. Os checks do commit
+final de documentação também precisam passar antes do aceite do PR.
+Veredito do escopo: correções aptas à revisão/merge após esses checks; release
+de distribuição não homologada pelos bloqueios externos descritos abaixo.
+O aceite local em checkout limpo aprovou 206 testes em 25 arquivos. Os checks da PR
+são a autoridade para o SHA remoto; falha intermediária não equivale a aprovação.
 
-## Limitações honestas (não são bugs)
+Comandos de aceite: npm ci; npm run check:source; npm run build; npm run typecheck;
+npm test -- --reporter=verbose; npm audit --omit=dev; npm audit --audit-level=moderate;
+node scripts/smoke-doctor.mjs; git diff --check; git fsck --no-reflogs --full.
+O smoke executa o mesmo script de `npm run doctor` contra servidor real temporário.
 
-- **Isolamento real**: no modo admin, comandos/Docker/PTY rodam com os privilégios
-  do usuário. É guardrail, não sandbox — isolamento forte exige usuário
-  dedicado/VM/Docker rootless (documentado no README).
-- **DevDependencies**: `vitest`/`vite`/`esbuild` têm advisories **só de dev**
-  (`npm audit --omit=dev` = 0); correção exige major bump do Vitest bloqueado por
-  ERESOLVE; não afeta produção.
-- **Sem dashboard hospedado / device pairing na nuvem**: o controle é local; o
-  túnel é apenas transporte.
-- **`.exe` não assinado** por padrão: a infra de assinatura existe e ativa com um
-  certificado (secret do CI); sem ele, o SmartScreen alerta.
-- **`admin.secret` inócuo em commit antigo** (`f6120a4`): valor descartável de
-  teste, já removido do HEAD e `gitignored`; não é credencial de produção.
+## Regressão adicional de PDF no Windows
+
+A repetição da suíte no commit de evidências perdeu o processo durante read_pdf
+(ECONNRESET seguido de ECONNREFUSED), apesar da matriz principal aprovada.
+O relato upstream https://github.com/mozilla/pdf.js/issues/21934 descreve falha
+nativa compatível ao importar PDF.js 5.x em worker_threads no Windows. Sem dump,
+a causa nativa exata permanece inferida. PDF passou a usar processo filho e IPC,
+sem segredos herdados, com encerramento aguardado antes de liberar a cota.
+A regressão executa cinco leituras reais consecutivas, cancelamento e deadline.
+As evidências anteriores continuam identificadas pelo SHA; os checks mais recentes
+do PR são necessários para validar este ajuste adicional.
+
+## Riscos residuais e limites
+
+- Não é sandbox. Node/Python/Docker/batch autorizados usam privilégios do processo;
+  podem acessar rede, arquivos e segredos desse usuário. Docker do host pode
+  equivaler a root. Use usuário dedicado, VM/cgroups ou Docker rootless.
+- Checagens de paths/identidade têm TOCTOU frente a processos locais adversários.
+  Processo que se desanexe deliberadamente pode escapar da árvore gerenciada;
+  não há Windows Job Object/cgroup como fronteira de contenção.
+- Heap V8 de worker não limita toda memória nativa. ZIP/documentos e saída têm
+  limites de aplicação, não garantia de memória/CPU do sistema operacional.
+- Auditoria não é inviolável para o dono do processo; registro posterior pode
+  falhar após efeito colateral. create_project não é transação multiarquivo.
+- Falha de persistência retorna failed e exige intervenção antes de reiniciar.
+  Token válido em formato não prova entropia; gere com RNG criptográfico.
+- HTTP/MCP real não prova integração com contas comerciais ChatGPT/Claude.
+  HTTPS, token, Origin allowlist e cliente compatível são necessários.
+- Não implementados: pairing/revogação por dispositivo, dashboard hospedado,
+  preview rico, edição avançada de documentos, auto-update e rollback transacional.
+- human_local possui painel Windows; GUI Linux/macOS não implementada.
+
+## BLOCKED_BY_EXTERNAL_DEPENDENCY — homologação de distribuição
+
+Certificado de code signing, conta/domínio Cloudflare e clientes comerciais não
+foram disponibilizados. Não houve execução de GUI interativa nem ciclo completo
+de instalação/upgrade/rollback/desinstalação em VM limpa. Build de preview e testes
+PowerShell não substituem essa homologação. Não publicar release até validação
+Windows e decisão explícita do usuário. O gate unsigned é testado negativamente;
+a assinatura positiva depende de certificado real.
+
+Fontes: https://nodejs.org/api/child_process.html;
+https://nodejs.org/dist/v22.23.2/SHASUMS256.txt;
+https://github.com/cloudflare/cloudflared/releases/tag/2025.8.1;
+https://github.com/wonderwhy-er/DesktopCommanderMCP/blob/main/README.md.
+
+## Continuação: ciclo dos scripts instalados no Windows
+
+A CI agora executa `scripts/test-installed-lifecycle.ps1` em Windows PowerShell
+5.1, com cópia de dist/config/scripts, dependências por junction temporária e
+pastas com espaços. Exercita servidor MCP real, healthcheck e limpeza de sessão,
+início duplicado, preservação de configuração, rotação persistida, parada dupla,
+reinício, revogação que impede reinício, PID externo e desinstalação sem purga.
+Não instala o EXE nem automatiza o wizard/WinForms ou uma conta Cloudflare.
+
+A rodada 35555973381 reproduziu sucesso falso em stop-access com JSON inválido.
+A parada agora retorna erro sanitizado; uninstall-cleanup propaga a falha e não
+continua para purga. O painel verifica o código da parada, limpa endpoint obsoleto
+e não afirma ter copiado um endpoint ausente. Homologação visual segue pendente.
+A CI tem prazos de execução e cancela previews anteriores da mesma branch em job
+separado com permissão Actions; o job que instala dependências continua read-only.
+
+
+## Continuação: instalador EXE real no Windows
+
+O workflow passou a executar o EXE compilado em runner Windows descartável,
+com instalação silenciosa em caminho com espaços, MCP autenticado, tarefa
+Interactive/Limited, upgrade e desinstalação preservando configuração/workspace.
+O teste adicional reinstala com token revogado e exige código de saída 10.
+Os logs sanitizados e resultados ficam no artefato `windows-exe-validation`.
+
+A primeira execução real (35585271885) expôs uma corrida entre o início da
+tarefa agendada e o healthcheck. A exceção de pós-instalação do Inno ainda
+devolvia sucesso. A rodada 35585943467 confirmou a tarefa em execução e o
+novo código 10. O instalador agora aguarda até 45 segundos pela saúde;
+somente um handshake MCP válido libera o resultado de sucesso. Esse limite
+não representa rollback transacional; uma falha conserva dados para diagnóstico.
+
+Novas instalações usam conexão local por padrão, sem baixar ou iniciar túnel.
+Acesso remoto exige escolha explícita; upgrades preservam a configuração
+existente, inclusive o comportamento legado quando a chave não existe.
+
+Esta automação não valida cliques no wizard, UAC, WinForms, reinicialização/logon,
+máquina sem Node pré-instalado, assinatura positiva ou clientes Cloudflare.
+O DESKTOP-PRADO estava offline na consulta desta sessão. Homologação interativa
+e distribuição permanecem pendentes. Nenhum merge, tag ou release foi feito.
+
+
+A rodada 35586371762 passou nas asserções funcionais do EXE, incluindo revogação,
+mas falhou ao ler um log ainda aberto pelo processo temporário do desinstalador.
+O teste agora aguarda a liberação exclusiva do log por até 15 segundos e confere
+também a limpeza da reinstalação rejeitada; erro de coleta continua bloqueando CI.
+
+
+A repetição 35587000709 expôs uma segunda janela: HTTP/MCP respondia antes de
+o launcher gravar state.json. O healthcheck com DataDir agora exige também
+porta e identidade viva do processo persistidas; o instalador só conclui depois
+desse registro, necessário à parada segura. O teste do EXE lê o estado sem
+espera própria, cobrindo esse contrato de prontidão.

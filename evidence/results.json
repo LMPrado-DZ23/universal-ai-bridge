@@ -1,0 +1,90 @@
+{
+  "validated_head": "92cc4fec71ab4f89443538f316911118c49b3eed",
+  "date": "2026-09-21",
+  "scope": "Historical clean-checkout and CI evidence for validated_head. Additional PDF process isolation is described below; latest PR checks validate the final commit.",
+  "local_clean_checkout": {
+    "node": "24.19.0",
+    "platform": "Linux",
+    "tests": 206,
+    "test_files": 25,
+    "checks_passed": [
+      "npm ci",
+      "check:source",
+      "build",
+      "typecheck",
+      "npm test",
+      "npm audit --omit=dev",
+      "npm audit --audit-level=moderate",
+      "doctor smoke",
+      "git diff --check",
+      "git fsck --no-reflogs --full"
+    ]
+  },
+  "github_ci": {
+    "url": "https://github.com/LMPrado-DZ23/universal-ai-bridge/actions/runs/35548648871",
+    "conclusion": "success",
+    "node": "22.23.2",
+    "platforms": [
+      "ubuntu-latest",
+      "windows-latest",
+      "macos-latest"
+    ],
+    "tests_per_platform": 206,
+    "files_per_platform": 25,
+    "production_vulnerabilities": 0,
+    "all_vulnerabilities": 0,
+    "source_files_checked": 98,
+    "doctor_tools": 23,
+    "doctor_session_cleanup": true,
+    "doctor_insecure_http_rejected": true,
+    "powershell": [
+      "7",
+      "5.1"
+    ]
+  },
+  "installer": {
+    "url": "https://github.com/LMPrado-DZ23/universal-ai-bridge/actions/runs/35548648992",
+    "conclusion": "success",
+    "artifact_id": 10617113230,
+    "artifact_name": "preview-unsigned-assets",
+    "production_unsigned_negative_gate": "passed",
+    "installer_sha256": "4b8123364a68811bd974ab856b0675930f5be7457d257f2271d9f8a1e0d79b6d",
+    "checksum_verified": true,
+    "zip_sha256_verified": true,
+    "sbom_format": "CycloneDX",
+    "sbom_components": 263,
+    "signing_status": "Authenticode: NotSigned; production: False"
+  },
+  "not_validated": [
+    "Positive Authenticode signing with production certificate",
+    "Interactive Windows installation/upgrade/uninstall in clean VM",
+    "Real Cloudflare account/domain and commercial MCP clients"
+  ],
+  "not_implemented": [
+    "Per-device pairing/revocation",
+    "Hosted dashboard",
+    "Advanced document editing",
+    "Automatic updates with transactional rollback",
+    "Linux/macOS approval GUI"
+  ],
+  "additional_pdf_isolation": {
+    "reason": "Intermittent Windows server exit during PDF parsing; native PDF.js worker fault suspected, exact native cause not confirmed by dump.",
+    "upstream_report": "https://github.com/mozilla/pdf.js/issues/21934",
+    "behavior": "PDF in a bounded child process; non-PDF tasks remain in worker threads.",
+    "local_tests": 209,
+    "local_test_files": 25,
+    "local_checks_passed": [
+      "npm test",
+      "check:source",
+      "typecheck",
+      "git diff --check"
+    ],
+    "regressions": [
+      "Five consecutive real PDF reads",
+      "Child process cancellation and quota release",
+      "Child process deadline",
+      "Server shutdown stops active PDF subprocesses"
+    ],
+    "final_ci": "https://github.com/LMPrado-DZ23/universal-ai-bridge/pull/1/checks"
+  }
+}

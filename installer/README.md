@@ -1,106 +1,77 @@
-# Instalador Windows — `UniversalAI-Bridge-Setup.exe`
+# Instalador Windows — preview
 
-Transforma o Universal AI Bridge num produto para leigos: o usuário roda um único
-`.exe`, segue um assistente e termina com o bridge instalado, iniciado
-automaticamente e pronto para conectar ao ChatGPT.
+O instalador Inno Setup é um caminho de distribuição em validação. Build do EXE
+não comprova instalação, upgrade, logon, GUI, túnel ou desinstalação em máquina
+limpa. Não se trata de uma release homologada para leigos.
 
-## Como o usuário final usa
+## Gerar e verificar
 
-1. Baixa `UniversalAI-Bridge-Setup.exe` (gerado pelo CI — veja abaixo) e executa.
-2. Aceita a elevação do Windows (UAC).
-3. O assistente verifica o Windows (10/11 x64), escolhe a pasta e o **modo**:
-   - **Seguro** (padrão): arquivos isolados numa pasta, terminal e Docker desligados.
-   - **Administrador**: acesso amplo. Exige digitar a frase exata
-     `I_UNDERSTAND_FULL_PC_ACCESS`.
-4. O instalador então, automaticamente:
-   - garante o **Node.js 22+** (winget ou MSI oficial);
-   - baixa o **cloudflared**;
-   - gera um **token** com RNG criptográfico e grava a config em
-     `%LOCALAPPDATA%\UniversalAIBridge\.env`;
-   - registra uma **Tarefa Agendada** que inicia o bridge no logon e a inicia agora;
-   - sobe o **túnel** e testa `/health` + handshake MCP;
-   - copia o **endpoint** para a área de transferência e abre a página de
-     **conectores do ChatGPT**.
-5. Ao final, abre o **Painel de Controle** com: status do bridge e do túnel,
-   endpoint, e botões **Abrir ChatGPT**, **Copiar endpoint**, **Religar acesso**,
-   **Parar acesso imediatamente** e **Desinstalar**.
+A PR e qualquer mudança em `main` executam `.github/workflows/installer.yml`, sem
+filtros que deixem arquivos empacotados de fora. O workflow instala dependências,
+verifica fontes, build, tipos, testes, auditoria completa e produção, scripts
+PowerShell, gera SBOM, compila o EXE e publica SHA-256.
 
-No ChatGPT, o usuário cola a URL `/mcp` como conector e adiciona o header
-`Authorization: Bearer <token>` (o token está no `.env`; o painel lembra disso).
+Branches/workflow manual geram o artifact `preview-unsigned-assets`, contendo
+`UniversalAI-Bridge-Setup-preview-unsigned.exe`, SBOM, SHA256SUMS e SIGNING-STATUS.
+Tags `v*` **falham** sem `CODE_SIGN_PFX_BASE64` e `CODE_SIGN_PASSWORD` ou sem
+Authenticode válido. Assinatura usa certificado em memória; senha não vai em argv.
+Uma assinatura válida não garante reputação SmartScreen. Não crie tag até decisão
+do usuário após CI verde e homologação Windows.
 
-## O que exige confirmação do usuário (por segurança)
+## Comportamento previsto
 
-O instalador **não burla** UAC, login do ChatGPT nem autorização. O usuário
-confirma explicitamente: a elevação (UAC), o **modo administrador** (digitando a
-frase), a conexão no ChatGPT e as permissões do app MCP. O **modo seguro é o
-padrão**.
+- Instalacao nova usa conexao local por padrao, sem baixar/iniciar Cloudflare.
+  O wizard oferece acesso remoto por opt-in; a escolha persiste como
+  `BRIDGE_CONNECTION=local|remote`. Upgrade preserva a configuracao existente.
+- Safe é padrão; terminal desligado; Docker desligado. Admin exige frase explícita.
+- Node MSI fixado em **22.23.2**, hash versionado e editor OpenJS Foundation.
+  Runtime já instalado e compatível é reutilizado; sua origem é responsabilidade
+  do administrador. Não há fallback de download para `latest`.
+- cloudflared **2025.8.1**, hash versionado e assinatura/editor Cloudflare válidos,
+  inclusive em binário existente. Se o artefato oficial não cumprir a verificação,
+  a instalação para; não há bypass.
+- Configuração usa arquivo temporário privado, flush e substituição atômica.
+  Reexecução preserva configurações e revogação; opções explícitas mudam somente
+  as chaves correspondentes. Upgrade pelo wizard preserva o `.env` existente.
+- Launcher valida portas MCP/admin antes de criar processos, aguarda health e
+  registra caminho, command line e criação de cada PID. Falha encerra somente
+  processos identificados da tentativa. Isso não é rollback transacional do EXE.
+- Túnel nomeado passa token por arquivo privado; somente MCP, nunca admin, deve
+  ser encaminhado. URL rápida é temporária e não é deployment permanente seguro.
+- Tarefa de logon usa o usuário com RunLevel Limited. Instalação exige UAC.
+- Painel diferencia health do bridge e processo do túnel. Processo ativo não
+  comprova conectividade externa. Copiar token exige escolha explícita.
+- Aprovação human_local é feita no painel Windows. Não há GUI Linux/macOS.
+- Parada valida identidade antes de taskkill. Desinstalação preserva workspace,
+  credenciais e auditoria; purga requer opção explícita.
 
-## Como gerar o `.exe`
+O teste `scripts/test-installed-lifecycle.ps1` cobre inicio local, MCP autenticado,
+rotacao/reinicio, revogacao persistida, preservacao de dados e PID externo, parada
+e limpeza repetidas. JSON de estado corrompido deve falhar com codigo nao zero.
+Ele usa uma copia da aplicacao; nao executa o assistente EXE.
 
-O `.exe` é compilado pelo **GitHub Actions** (`.github/workflows/installer.yml`)
-num runner Windows, e publicado como **artifact** (e como asset de Release quando
-há uma tag `v*`). Para baixar: aba **Actions → Build Windows Installer → artifact
-`UniversalAI-Bridge-Setup`**.
+## Homologação necessária
 
-Para compilar localmente (precisa de [Inno Setup 6](https://jrsoftware.org/isdl.php)):
+Em VM Windows limpa: instalar, configurar safe/admin, negar checksum/assinatura
+inválidos, testar ACL negada e porta ocupada, iniciar sem túnel e com túnel real,
+aprovar/recusar ações, rotacionar/revogar/reiniciar, atualizar preservando dados,
+parar duas vezes e desinstalar preservando dados. Testar também falha de instalação
+no meio, pois rollback transacional completo não está implementado.
 
-```powershell
-npm ci
-npm run build
-npm prune --omit=dev
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\UniversalAI-Bridge.iss
-# saída: installer\Output\UniversalAI-Bridge-Setup.exe
-```
+`BLOCKED_BY_EXTERNAL_DEPENDENCY`: certificado de assinatura, domínio/conta
+Cloudflare e contas/clientes comerciais. CI valida PowerShell, build e ciclo local dos scripts com servidor real; uma sessão
+Windows interativa ainda é necessária para homologar WinForms e o ciclo do wizard.
 
-## Arquivos
+Para uso pelo código-fonte, siga o README raiz e `npm run doctor`. O HTTP MCP não
+implica suporte automático a headers personalizados em ChatGPT/Claude web.
 
-- `UniversalAI-Bridge.iss` — script do instalador (wizard, modo, pós-instalação).
-- `scripts\configure.ps1` — gera token e escreve o `.env`.
-- `scripts\ensure-node.ps1` / `ensure-cloudflared.ps1` — runtime.
-- `scripts\install-task.ps1` — Tarefa Agendada de logon.
-- `scripts\launcher.ps1` — inicia bridge + túnel e grava `state.json`.
-- `scripts\healthcheck.ps1` — testa `/health` e handshake MCP.
-- `scripts\stop-access.ps1` — parada de emergência.
-- `scripts\uninstall-cleanup.ps1` — limpeza na desinstalação.
-- `control\control.ps1` — painel de controle (WinForms).
 
-## Melhorias opcionais (já suportadas — só ativar)
+### Ciclo do EXE em CI
 
-### Assinar o `.exe` (remove o alerta do SmartScreen)
-
-O pipeline assina o instalador **automaticamente** se você fornecer um
-certificado de code signing. Em **Settings → Secrets and variables → Actions**
-do repositório, crie:
-
-- `CODE_SIGN_PFX_BASE64` — seu certificado `.pfx` em base64
-  (`[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))`).
-- `CODE_SIGN_PASSWORD` — a senha do `.pfx`.
-
-No próximo build, `installer/scripts/sign.ps1` assina e valida (SHA256 +
-timestamp). Sem os secrets, o build continua e gera um `.exe` não assinado.
-
-### URL fixa (túnel nomeado da Cloudflare)
-
-Crie um túnel nomeado no painel da Cloudflare (requer sua conta + domínio),
-mapeie o hostname para `http://127.0.0.1:8787`, e defina no `.env`
-(`%LOCALAPPDATA%\UniversalAIBridge\.env`): `CLOUDFLARE_TUNNEL_TOKEN` e
-`TUNNEL_HOSTNAME`. O `launcher.ps1` passa a usar a URL fixa automaticamente.
-
-## Supply-chain (verificação)
-
-- **Node.js:** versão fixa (`v22.12.0`), verificado por **SHA-256** (SHASUMS256.txt
-  oficial) **e** assinatura Authenticode antes de instalar.
-- **cloudflared:** assinatura Authenticode do editor **Cloudflare** verificada
-  antes de usar (fail-closed).
-- **Release:** publica `sbom.cdx.json` (CycloneDX) e `SHA256SUMS.txt` do `.exe`.
-- **CI:** actions pinadas por commit SHA; `contents: write` só no job de release
-  (em tags `v*`).
-
-## Limitações honestas
-
-- Sem o certificado acima, o `.exe` **não é assinado** — o SmartScreen pode
-  alertar ("Mais informações → Executar assim mesmo").
-- Sem o túnel nomeado, o `trycloudflare` gera **URL nova a cada reinício**; o
-  painel mostra o endpoint atual (botão **Copiar endpoint**).
-- O bridge roda com os **privilégios do usuário logado** (não SYSTEM). No modo
-  admin isso significa acesso amplo aos arquivos/contas desse usuário.
+`scripts/test-windows-exe.ps1` instala o EXE real silenciosamente em Windows,
+confere MCP autenticado e tarefa com privilégio limitado, atualiza e desinstala,
+preservando dados. Também exige falha explícita ao reinstalar com token revogado.
+Os resultados e logs sanitizados são publicados em `windows-exe-validation`.
+A pós-instalação espera a partida da tarefa por até 45 segundos; falha de saúde
+ou autenticação produz código 10. Dados e instalação parcial podem permanecer
+para diagnóstico. Isso não substitui validação interativa do wizard/UAC/WinForms.

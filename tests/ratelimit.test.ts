@@ -36,3 +36,8 @@ describe("RateLimiter", () => {
     expect(rl.check("b").ok).toBe(true);
   });
 });
+it('bounds distinct IP buckets and allows cleanup',()=>{
+ const rl=new RateLimiter(60000,3,3,1000,5000,2);
+ try {expect(rl.check('a').ok).toBe(true);expect(rl.check('b').ok).toBe(true);expect(rl.check('c').ok).toBe(false);}
+ finally{rl.dispose();}
+});

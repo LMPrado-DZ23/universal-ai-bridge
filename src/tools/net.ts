@@ -1,11 +1,15 @@
+import { writeAtomic } from "../security/atomic-file.js";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { isIP } from "node:net";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname, extname } from "node:path";
+import { extname } from "node:path";
+import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { safeResolve, display } from "../security/paths.js";
 import { sanitizeUrl } from "../audit/log.js";
-import { ok, fail, gate, type Ctx } from "./helpers.js";
+import { ok, fail, gate, assertSessionActive, type Ctx } from "./helpers.js";
 
 const MAX_REDIRECTS = 5;
 const TIMEOUT_MS = 30000;
@@ -22,6 +26,10 @@ export function isPrivateIp(ipRaw: string): boolean {
 
   // IPv6
   if (ip.includes(":")) {
+    // Only globally routable IPv6 unicast. This also blocks hexadecimal
+    // mapped IPv4, NAT64, link-local variants and transition ranges.
+    if (!isIP(ip) || !/^[23][0-9a-f]{3}:/.test(ip)) return true;
+    if (/^2001:(?:0:|db8:|2:|10:|20:)/.test(ip) || ip.startsWith('2002:') || ip.startsWith('3fff:')) return true;
     if (ip === "::1" || ip === "::") return true;
     if (ip.startsWith("fe80") || ip.startsWith("fc") || ip.startsWith("fd")) return true; // link-local + ULA
     if (ip.startsWith("ff")) return true; // multicast
@@ -29,30 +37,55 @@ export function isPrivateIp(ipRaw: string): boolean {
   }
   // IPv4
   const m = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (!m) return false;
+  if (!m || !isIP(ip)) return true;
   const [a, b] = [Number(m[1]), Number(m[2])];
   if (a === 0 || a === 127 || a === 10) return true; // "this", loopback, RFC1918
   if (a === 169 && b === 254) return true; // link-local
   if (a === 192 && b === 168) return true; // RFC1918
   if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64/10
+  if (a===192 && (b===0 || b===88)) return true;
+  if (a===198 && (b===18 || b===19 || b===51)) return true;
+  if (a===203 && b===0) return true;
   if (a >= 224) return true; // multicast / reservado
   return false;
 }
 
-async function assertPublicHost(hostname: string): Promise<void> {
-  // Resolve TODOS os endereços (A e AAAA) e bloqueia se qualquer um for privado.
-  let addrs;
-  try {
-    addrs = await lookup(hostname, { all: true });
-  } catch {
-    throw new Error(`Não foi possível resolver o host: ${hostname}`);
+export async function downloadPublic(url: string, max: number, signal: AbortSignal): Promise<Buffer> {
+  let current = new URL(url);
+  for(let hop=0;hop<=MAX_REDIRECTS;hop++) {
+    signal.throwIfAborted();
+    if(!['http:','https:'].includes(current.protocol) || current.username || current.password) throw new Error('URL/protocolo/credenciais bloqueados.');
+    const hostname=current.hostname.replace(/^\[|\]$/g,'');
+    const addresses = await new Promise<LookupAddress[]>((resolve,reject)=>{
+      const abort=()=>reject(new Error('Download cancelado ou tempo limite excedido.'));
+      signal.addEventListener('abort',abort,{once:true});
+      lookup(hostname,{all:true}).then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));
+    });
+    signal.throwIfAborted();
+    if(!addresses.length || addresses.some(a=>isPrivateIp(a.address)))throw new Error('Destino privado/loopback bloqueado.');
+    const address=addresses[0];
+    // Connect to the exact address just validated; Host and TLS SNI retain original hostname.
+    const response=await new Promise<{status:number;location?:string;body:Buffer}>((resolve,reject)=>{
+      const request=current.protocol==='https:'?httpsRequest:httpRequest;
+      const req=request({protocol:current.protocol,hostname:address.address,port:current.port||undefined,
+        path:current.pathname+current.search,method:'GET',headers:{Host:current.host,'Accept-Encoding':'identity'},
+        ...(current.protocol==='https:' && !isIP(hostname) ? {servername:hostname} : {}),signal,
+      },res=>{
+        const status=res.statusCode ?? 0;
+        if(status>=300 && status<400 && res.headers.location){res.destroy();resolve({status,location:res.headers.location,body:Buffer.alloc(0)});return;}
+        if(status<200 || status>=300){res.destroy();reject(new Error(`HTTP ${status} ao baixar.`));return;}
+        const chunks:Buffer[]=[];let bytes=0;
+        res.on('data',(chunk:Buffer)=>{bytes+=chunk.length;if(bytes>max){res.destroy(new Error('Download excede limite de bytes.'));return;}chunks.push(chunk);});
+        res.once('error',reject);
+        res.once('end',()=>resolve({status,body:Buffer.concat(chunks)}));
+      });
+      req.once('error',reject);req.end();
+    });
+    if(!response.location)return response.body;
+    current=new URL(response.location,current);
   }
-  for (const { address } of addrs) {
-    if (isPrivateIp(address)) {
-      throw new Error(`Destino privado/loopback bloqueado: ${hostname} → ${address}`);
-    }
-  }
+  throw new Error('Excesso de redirects.');
 }
 
 /**
@@ -87,53 +120,12 @@ export function registerNetTools(server: McpServer, ctx: Ctx): void {
         const g = gate(ctx, "download_to_file", core, confirm_token);
         if (!g.proceed) return g.result;
 
-        // Segue redirects manualmente, revalidando cada host.
-        let current = url;
-        let resp: Response | undefined;
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
-        try {
-          for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-            const u = new URL(current);
-            if (u.protocol !== "http:" && u.protocol !== "https:") return fail("Só http/https são permitidos.");
-            await assertPublicHost(u.hostname);
-            resp = await fetch(current, { redirect: "manual", signal: ac.signal });
-            if (resp.status >= 300 && resp.status < 400) {
-              const loc = resp.headers.get("location");
-              if (!loc) break;
-              current = new URL(loc, current).toString();
-              if (hop === MAX_REDIRECTS) return fail("Excesso de redirects.");
-              continue;
-            }
-            break;
-          }
-        } finally {
-          clearTimeout(timer);
-        }
-        if (!resp) return fail("Sem resposta.");
-        if (!resp.ok) return fail(`HTTP ${resp.status} ao baixar.`);
-
-        // Lê com teto de bytes (sem arrayBuffer ilimitado).
-        const chunks: Uint8Array[] = [];
-        let total = 0;
-        const reader = resp.body?.getReader();
-        if (reader) {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (value) {
-              total += value.length;
-              if (total > max) {
-                await reader.cancel();
-                return fail(`Arquivo baixado excede o limite (${max} bytes).`);
-              }
-              chunks.push(value);
-            }
-          }
-        }
-        const buf = Buffer.concat(chunks.map((c) => Buffer.from(c)));
-        mkdirSync(dirname(abs), { recursive: true });
-        writeFileSync(abs, buf);
+        const deadline = AbortSignal.timeout(TIMEOUT_MS);
+        const signal = ctx.signal ? AbortSignal.any([deadline,ctx.signal]) : deadline;
+        const buf = await downloadPublic(url,max,signal);
+        if(ctx.isDisposed?.())return fail("Sessão encerrada.");
+        safeResolve(ctx.config.workspace,dest);
+        writeAtomic(abs, buf, () => { assertSessionActive(ctx); safeResolve(ctx.config.workspace, dest); });
         ctx.audit.record({ tool: "download_to_file", decision: "executed", args: { url: sanitizeUrl(url), dest }, detail: `${buf.length} bytes; ext=${extname(dest)}` });
         return ok(`✔ Baixado ${buf.length} bytes → ${display(ctx.config.workspace, abs)}`);
       } catch (e) {

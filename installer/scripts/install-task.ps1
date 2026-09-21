@@ -1,4 +1,4 @@
-# install-task.ps1 — cria a Tarefa Agendada que inicia o bridge no logon do usuário
+﻿# install-task.ps1 — cria a Tarefa Agendada que inicia o bridge no logon do usuário
 # e (opcionalmente) a executa agora. Roda no contexto do usuário (não SYSTEM),
 # para que o workspace fique no perfil dele.
 param(

@@ -1,6 +1,6 @@
+import { writePrivateAtomic } from "./private-file.js";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync, renameSync, chmodSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -12,9 +12,9 @@ function safeEqual(a: string, b: string): boolean {
 /** Atualiza (ou insere) uma chave num conteúdo estilo .env. */
 function upsertEnvLine(content: string, key: string, value: string): string {
   const line = `${key}=${value}`;
-  const re = new RegExp(`^${key}=.*$`, "m");
-  if (re.test(content)) return content.replace(re, line);
-  return content.endsWith("\n") || content === "" ? content + line + "\n" : content + "\n" + line + "\n";
+  const lines = content.split(/\r?\n/).filter(l => !new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`).test(l));
+  while(lines.at(-1)==='')lines.pop();
+  return [...lines,line,''].join('\n');
 }
 
 /**
@@ -24,6 +24,7 @@ function upsertEnvLine(content: string, key: string, value: string): string {
  */
 export class TokenStore {
   private current: string | undefined;
+  persistence: "persisted" | "memory-only" | "failed" = "memory-only";
 
   constructor(initial: string | undefined, private envFile?: string) {
     this.current = initial;
@@ -47,21 +48,21 @@ export class TokenStore {
     if (!this.envFile || !existsSync(this.envFile)) return;
     const cur = readFileSync(this.envFile, "utf8");
     const next = upsertEnvLine(cur, "BRIDGE_TOKEN", token);
-    const tmp = join(dirname(this.envFile), `.env.rot.${randomBytes(4).toString("hex")}`);
-    writeFileSync(tmp, next, { encoding: "utf8", mode: 0o600 });
-    try { chmodSync(tmp, 0o600); } catch { /* Windows ACL */ }
-    renameSync(tmp, this.envFile); // troca atômica
+    writePrivateAtomic(this.envFile, next);
+    if (readFileSync(this.envFile, 'utf8') !== next) throw new Error('Persistência não verificada.');
   }
 
   /** Gera e passa a exigir um novo token; persiste se possível. Devolve o valor. */
+  // Synchronous read/write/rename: serialized by the JS event loop in this process.
   rotate(): string {
     const token = randomBytes(32).toString("hex");
     this.current = token;
-    try { this.persist(token); } catch { /* mantém em memória mesmo se a escrita falhar */ }
+    try { this.persist(token); this.persistence = this.persists ? "persisted" : "memory-only"; } catch { this.persistence = "failed"; }
     return token;
   }
 
   revoke(): void {
     this.current = undefined;
+    try {this.persist(""); this.persistence=this.persists?"persisted":"memory-only";}catch{this.persistence="failed";}
   }
 }

@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 const distEntry = resolve(__dirname, "..", "dist", "index.js");
 const PORT = 8930 + Math.floor(Math.random() * 9);
-const TOKEN = "pty-token-0123456789abcdef";
+const TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const BASE = `http://127.0.0.1:${PORT}`;
 let srv: ChildProcess | undefined;
 let ws: string;

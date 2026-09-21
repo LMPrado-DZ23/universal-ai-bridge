@@ -35,3 +35,8 @@ describe("ConfirmStore", () => {
     expect(s.consume("naoexiste", "write_file", {})).toBe(false);
   });
 });
+it('refuses a second local approval and revokes pending action on session clear',()=>{
+ const s=new ConfirmStore();const args={path:'a'};const id=s.issueHuman('make_dir',args);
+ expect(ConfirmStore.decideHuman(id,true)).toBe(true);expect(ConfirmStore.decideHuman(id,true)).toBe(false);
+ s.clear();expect(s.consumeHuman(id,'make_dir',args)).toBe(false);expect(ConfirmStore.decideHuman(id,true)).toBe(false);
+});

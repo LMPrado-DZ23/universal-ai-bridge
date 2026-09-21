@@ -1,4 +1,4 @@
-# setup.ps1 — instala, compila e prepara o .env do Universal AI Bridge (Windows)
+﻿# setup.ps1 — instala, compila e prepara o .env do Universal AI Bridge (Windows)
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 

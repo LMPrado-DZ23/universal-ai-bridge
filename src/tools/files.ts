@@ -1,8 +1,9 @@
+import { writeAtomic } from "../security/atomic-file.js";
+import { isolated } from "../isolate.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   readFileSync,
-  writeFileSync,
   mkdirSync,
   readdirSync,
   statSync,
@@ -12,7 +13,7 @@ import {
 import { dirname, join, basename } from "node:path";
 import { safeResolve, display } from "../security/paths.js";
 import { sanitizeArgs } from "../audit/log.js";
-import { ok, fail, gate, type Ctx } from "./helpers.js";
+import { ok, fail, gate, assertSessionActive, type Ctx } from "./helpers.js";
 
 export function registerFileTools(server: McpServer, ctx: Ctx): void {
   const ws = ctx.config.workspace;
@@ -36,7 +37,7 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
         approval: ctx.config.approval,
         shell_enabled: ctx.config.allowShell,
         docker_enabled: ctx.config.allowDocker,
-        note: "Todos os caminhos são relativos à raiz do workspace. Você não pode sair dela.",
+        note: "Operações de caminho ficam no workspace. Programas autorizados não são sandbox.",
       };
       if (include_absolute_path) info.workspace_path = ws;
       return ok(JSON.stringify(info, null, 2));
@@ -120,17 +121,18 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Ler vários arquivos",
       description: "Lê vários arquivos de texto do workspace de uma vez.",
-      inputSchema: { paths: z.array(z.string()).describe("Caminhos relativos ao workspace") },
+      inputSchema: { paths: z.array(z.string().max(4096)).max(32).describe("Caminhos relativos ao workspace") },
     },
     async ({ paths }) => {
       const max = ctx.config.policy.files.maxReadBytes;
+      let remaining = max;
       const parts: string[] = [];
       for (const p of paths) {
         try {
           const abs = safeResolve(ws, p);
           const st = statSync(abs);
-          if (st.size > max) parts.push(`===== ${p} =====\n[pulado: ${st.size} bytes > limite]`);
-          else parts.push(`===== ${p} =====\n${readFileSync(abs, "utf8")}`);
+          if (st.size > remaining) parts.push(`===== ${p} =====\n[pulado: ${st.size} bytes > limite]`);
+          else { remaining -= st.size; parts.push(`===== ${p} =====\n${readFileSync(abs, "utf8")}`); }
         } catch (e) {
           parts.push(`===== ${p} =====\n[erro: ${(e as Error).message}]`);
         }
@@ -196,7 +198,7 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
         if (!g.proceed) return g.result;
 
         mkdirSync(dirname(abs), { recursive: true });
-        writeFileSync(abs, content, "utf8");
+        writeAtomic(abs, content, () => { assertSessionActive(ctx); safeResolve(ws, path); });
         ctx.audit.record({ tool: "write_file", decision: "executed", args: sanitizeArgs(core) });
         return ok(`✔ Escrito: ${display(ws, abs)} (${Buffer.byteLength(content)} bytes)`);
       } catch (e) {
@@ -214,7 +216,7 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
         "Substitui a primeira ocorrência exata de old_text por new_text num arquivo existente. Sujeito a aprovação.",
       inputSchema: {
         path: z.string(),
-        old_text: z.string().describe("Trecho exato (ou regex, se is_regex) a substituir"),
+        old_text: z.string().min(1).max(10000).describe("Trecho exato (ou regex, se is_regex) a substituir"),
         new_text: z.string().describe("Novo trecho"),
         replace_all: z.boolean().default(false).describe("Substituir todas as ocorrências"),
         is_regex: z.boolean().default(false).describe("Tratar old_text como expressão regular"),
@@ -226,20 +228,15 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
       try {
         const abs = safeResolve(ws, path);
         if (!existsSync(abs)) return fail(`Arquivo não existe: ${path}`);
+        if (statSync(abs).size > ctx.config.policy.files.maxReadBytes) return fail("Arquivo excede limite de leitura.");
         const current = readFileSync(abs, "utf8");
 
         let next: string;
         let count = 0;
         if (is_regex) {
-          let re: RegExp;
-          try {
-            re = new RegExp(old_text, replace_all ? "g" : "");
-          } catch (err) {
-            return fail(`Regex inválida: ${(err as Error).message}`);
-          }
-          count = (current.match(new RegExp(old_text, "g")) ?? []).length;
-          if (count === 0) return fail("Nenhuma ocorrência da regex encontrada.");
-          next = current.replace(re, new_text);
+          const edited = await isolated<{next:string;count:number}>({kind:'edit', current, pattern:old_text, replacement:new_text, all:replace_all, maxBytes:ctx.config.policy.files.maxWriteBytes},5000,ctx.signal);
+          next = edited.next; count = edited.count;
+          if (!count) return fail("Nenhuma ocorrência da regex encontrada.");
         } else {
           if (!current.includes(old_text)) return fail("old_text não encontrado no arquivo.");
           count = current.split(old_text).length - 1;
@@ -250,7 +247,12 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
         if (!decision.ok) return fail(`Bloqueado pela política: ${decision.reason}`);
         const g = gate(ctx, "edit_file", core, confirm_token);
         if (!g.proceed) return g.result;
-        writeFileSync(abs, next, "utf8");
+        safeResolve(ws, path);
+        if(readFileSync(abs,"utf8") !== current)return fail("Arquivo alterado durante edição; refaça a leitura.");
+        writeAtomic(abs, next, () => {
+          assertSessionActive(ctx); safeResolve(ws, path);
+          if (readFileSync(abs, "utf8") !== current) throw new Error("Arquivo alterado durante edição; refaça a leitura.");
+        });
         ctx.audit.record({ tool: "edit_file", decision: "executed", args: sanitizeArgs(core) });
         const applied = replace_all ? `${count} ocorrência(s)` : "1 ocorrência";
         return ok(`✔ Editado (${applied}): ${display(ws, abs)}`);
@@ -294,6 +296,10 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
       try {
         const absFrom = safeResolve(ws, from);
         const absTo = safeResolve(ws, to);
+        if(statSync(absFrom).isFile()) {
+          const decision=ctx.policy.checkWriteTarget(to,statSync(absFrom).size);
+          if(!decision.ok)return fail(`Bloqueado pela política: ${decision.reason}`);
+        }
         const g = gate(ctx, "move_path", core, confirm_token);
         if (!g.proceed) return g.result;
         mkdirSync(dirname(absTo), { recursive: true });
@@ -311,14 +317,15 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Criar esqueleto de projeto",
       description:
-        "Cria uma pasta de projeto com múltiplos arquivos de uma vez. files = { 'caminho': 'conteúdo' }. Sujeito a aprovação.",
+        "Escreve arquivos atomicamente um a um; em falha retorna os caminhos já gravados (operação parcial). files = { 'caminho': 'conteúdo' }. Sujeito a aprovação.",
       inputSchema: {
         name: z.string().describe("Nome da pasta do projeto (dentro do workspace)"),
-        files: z.record(z.string()).describe("Mapa caminho→conteúdo, relativo à pasta do projeto"),
+        files: z.record(z.string().max(5_000_000)).refine(v => Object.keys(v).length <= 64 && Buffer.byteLength(JSON.stringify(v)) <= ctx.config.policy.files.maxWriteBytes, "Limite agregado do projeto excedido").describe("Mapa caminho→conteúdo, relativo à pasta do projeto"),
         confirm_token: z.string().optional(),
       },
     },
     async ({ name, files, confirm_token }) => {
+      const completed: string[] = [];
       try {
         const projAbs = safeResolve(ws, name);
         for (const rel of Object.keys(files)) {
@@ -326,17 +333,18 @@ export function registerFileTools(server: McpServer, ctx: Ctx): void {
           const dec = ctx.policy.checkWriteTarget(rel, Buffer.byteLength(files[rel]));
           if (!dec.ok) return fail(`Bloqueado (${rel}): ${dec.reason}`);
         }
-        const g = gate(ctx, "create_project", { name, files: Object.keys(files) }, confirm_token);
+        const g = gate(ctx, "create_project", { name, files }, confirm_token);
         if (!g.proceed) return g.result;
         for (const [rel, content] of Object.entries(files)) {
           const abs = safeResolve(ws, join(name, rel));
           mkdirSync(dirname(abs), { recursive: true });
-          writeFileSync(abs, content, "utf8");
+          writeAtomic(abs, content, () => { assertSessionActive(ctx); safeResolve(ws, join(name, rel)); });
+          completed.push(rel);
         }
         ctx.audit.record({ tool: "create_project", decision: "executed", args: { name, files: Object.keys(files) } });
         return ok(`✔ Projeto "${name}" criado com ${Object.keys(files).length} arquivo(s) em ${display(ws, projAbs)}`);
       } catch (e) {
-        return fail(String((e as Error).message));
+        return fail(JSON.stringify({ partial: completed.length > 0, completed, error: "Falha ao criar projeto; confira os caminhos concluídos antes de repetir." }));
       }
     }
   );

@@ -1,3 +1,5 @@
+import { killTree } from "./jobs.js";
+import { DEFAULT_LIMITS, type ResourceLimits } from "./config.js";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, isAbsolute } from "node:path";
@@ -54,6 +56,7 @@ interface PtySession {
   exited: boolean;
   exitCode: number | null;
   truncated: boolean;
+  endedAt?: number;
 }
 
 /** Gerencia sessões de PTY (terminal interativo real). */
@@ -61,7 +64,13 @@ export class PtyManager {
   private ptys = new Map<string, PtySession>();
   private static all = new Set<PtyManager>();
 
-  constructor(private maxBufferBytes = 1_000_000) {
+  private destroyed = false;
+  private timer: ReturnType<typeof setInterval>;
+  private sweep(): void {
+    for (const [id,s] of this.ptys) if (s.exited && s.endedAt !== undefined && Date.now()-s.endedAt >= this.limits.jobTtlMs) this.ptys.delete(id);
+  }
+  constructor(private maxBufferBytes = 1_000_000, private limits: ResourceLimits = DEFAULT_LIMITS) {
+    this.timer = setInterval(() => this.sweep(), Math.min(10000, limits.jobTtlMs)); this.timer.unref();
     PtyManager.all.add(this);
   }
 
@@ -70,6 +79,9 @@ export class PtyManager {
   }
 
   start(file: string, args: string[], cwd: string, cols: number, rows: number, env: Record<string, string>): string {
+    if (this.destroyed) throw new Error("Sessão encerrada.");
+    this.sweep();
+    if (this.ptys.size >= this.limits.ptys || [...PtyManager.all].reduce((n,p) => n + p.ptys.size, 0) >= 32) throw new Error("Limite de PTYs atingido.");
     if (!mod) throw new Error("PTY não carregado (chame loadPty antes).");
     const id = randomBytes(6).toString("hex");
     const proc = mod.spawn(resolveExecutable(file), args, {
@@ -81,17 +93,15 @@ export class PtyManager {
     });
     const s: PtySession = { id, proc, buffer: "", exited: false, exitCode: null, truncated: false };
     proc.onData((d) => {
-      if (s.buffer.length >= this.maxBufferBytes) {
-        s.truncated = true;
-        return;
-      }
-      s.buffer += d;
-      if (s.buffer.length > this.maxBufferBytes) {
-        s.buffer = s.buffer.slice(0, this.maxBufferBytes);
-        s.truncated = true;
-      }
+      const used = [...this.ptys.values()].reduce((n,p) => n + Buffer.byteLength(p.buffer), 0);
+      const room = Math.max(0, Math.min(this.maxBufferBytes - Buffer.byteLength(s.buffer), this.limits.outputBytes - used, 32_000_000 - [...PtyManager.all].reduce((n,m) => n + [...m.ptys.values()].reduce((s,p) => s + Buffer.byteLength(p.buffer),0),0)));
+      let part = '', bytes = 0;
+      for (const point of d) { const n = Buffer.byteLength(point); if (bytes+n > room) break; part += point; bytes += n; }
+      s.buffer += part;
+      if (Buffer.byteLength(d) > room) s.truncated = true;
     });
     proc.onExit((e) => {
+      s.endedAt = Date.now();
       s.exited = true;
       s.exitCode = e.exitCode;
     });
@@ -119,6 +129,7 @@ export class PtyManager {
   write(id: string, data: string): void {
     const s = this.get(id);
     if (s.exited) throw new Error("PTY já terminou.");
+    if (Buffer.byteLength(data) > this.limits.stdinBytes) throw new Error("Limite de escrita PTY atingido.");
     s.proc.write(data);
   }
 
@@ -128,12 +139,15 @@ export class PtyManager {
 
   kill(id: string): void {
     const s = this.get(id);
+    if (s.exited) return;
     try {
+      killTree(s.proc.pid);
       s.proc.kill();
     } catch {
       /* já morto */
     }
     s.exited = true;
+    s.endedAt = Date.now();
   }
 
   killAll(): void {
@@ -148,7 +162,11 @@ export class PtyManager {
 
   /** Encerra tudo e remove do registro estático (cleanup de sessão). */
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    clearInterval(this.timer);
     this.killAll();
+    this.ptys.clear();
     PtyManager.all.delete(this);
   }
 }

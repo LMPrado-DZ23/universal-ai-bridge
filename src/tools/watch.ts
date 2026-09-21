@@ -22,6 +22,7 @@ export function registerWatchTools(server: McpServer, ctx: Ctx): void {
       try {
         const abs = safeResolve(ws, path);
         if (!existsSync(abs)) return fail(`Caminho não existe: ${path}`);
+        if(ctx.config.auditRequired)ctx.audit.record({tool:"watch_start",decision:"allow",args:{}});
         const id = ctx.watcher.start(abs, display(ws, abs), recursive);
         ctx.audit.record({ tool: "watch_start", decision: "allow", args: { path } });
         return ok(`✔ Observando "${path}". watch_id="${id}". Use watch_poll para ver mudanças.`);
@@ -57,6 +58,7 @@ export function registerWatchTools(server: McpServer, ctx: Ctx): void {
     },
     async ({ watch_id }) => {
       try {
+        if(ctx.config.auditRequired)ctx.audit.record({tool:"watch_stop",decision:"allow",args:{}});
         ctx.watcher.stop(watch_id);
         ctx.audit.record({ tool: "watch_stop", decision: "executed", args: { watch_id } });
         return ok(`✔ Watch ${watch_id} encerrado.`);

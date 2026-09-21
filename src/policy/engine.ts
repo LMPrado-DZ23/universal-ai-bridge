@@ -111,7 +111,7 @@ export class PolicyEngine {
    */
   checkProgram(program: string): Decision {
     const raw = program.trim();
-    if (!raw) return { ok: false, reason: "Programa vazio" };
+    if (!raw || raw !== program || !/^[a-zA-Z0-9_-]+(?:\.(?:exe|cmd|bat|com))?$/.test(raw)) return { ok: false, reason: "Nome de programa inválido" };
     if (/[/\\:]/.test(raw)) {
       return { ok: false, reason: "Use o nome do binário (sem caminho); ele é resolvido pelo PATH." };
     }
@@ -144,7 +144,10 @@ export class PolicyEngine {
     const b = bin.trim().toLowerCase();
     if (!/^[a-z0-9._-]+$/.test(b)) return { ok: false, reason: "Nome de binário inválido." };
     if (this.policy.shell.deny.includes(b)) return { ok: false, reason: `"${b}" está na denylist e não pode ser liberado.` };
-    if (!this.policy.shell.allow.includes(b)) this.policy.shell.allow.push(b);
+    if (!this.policy.shell.allow.includes(b)) {
+      if(this.policy.shell.allow.length>=256)return {ok:false,reason:"Limite de allowlist atingido."};
+      this.policy.shell.allow.push(b);
+    }
     return { ok: true };
   }
 

@@ -1,6 +1,8 @@
+import { writePrivateAtomic } from "../security/private-file.js";
+import { DEFAULT_LIMITS } from "../config.js";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { randomUUID, randomBytes } from "node:crypto";
-import { writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -15,11 +17,13 @@ import { startAdmin } from "./admin.js";
 
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 const SWEEP_MS = 60 * 1000;
+let globalRequests = 0;
 
 interface Entry {
   transport: StreamableHTTPServerTransport;
   resources: SessionResources;
   lastSeen: number;
+  requests: number;
 }
 
 function clientIp(req: Request): string {
@@ -28,22 +32,12 @@ function clientIp(req: Request): string {
 
 /** Garante o segredo do admin: usa BRIDGE_ADMIN_SECRET ou gera e grava (0600). */
 function ensureAdminSecret(config: Config): string {
-  if (process.env.BRIDGE_ADMIN_SECRET && process.env.BRIDGE_ADMIN_SECRET.length >= 16) {
-    return process.env.BRIDGE_ADMIN_SECRET;
+  if (config.adminSecret && config.adminSecret.length >= 16) {
+    return config.adminSecret;
   }
   const secret = randomBytes(24).toString("hex");
-  try {
-    mkdirSync(config.dataDir, { recursive: true });
-    const p = resolve(config.dataDir, "admin.secret");
-    writeFileSync(p, secret, "utf8");
-    try {
-      chmodSync(p, 0o600);
-    } catch {
-      /* Windows ACL não é POSIX; ok */
-    }
-  } catch {
-    /* se não puder gravar, o segredo ainda vive em memória nesta execução */
-  }
+  mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
+  writePrivateAtomic(resolve(config.dataDir, "admin.secret"), secret);
   return secret;
 }
 
@@ -54,18 +48,19 @@ export async function startHttp(config: Config): Promise<() => void> {
   }
 
   const app = express();
-  app.use(express.json({ limit: "8mb" }));
+
 
   const tokens = new TokenStore(config.token, config.envFile);
   const limiter = new RateLimiter();
-  const sessions: Record<string, Entry> = {};
+  const sessions: Record<string, Entry> = Object.create(null);
+  let initializing = 0;
 
   const disposeSession = (sid: string) => {
     const e = sessions[sid];
     if (!e) return;
     delete sessions[sid];
     try { e.resources.dispose(); } catch { /* ignore */ }
-    try { e.transport.close(); } catch { /* ignore */ }
+    void e.transport.close().catch(() => process.stderr.write("[bridge] Falha ao fechar transporte.\n"));
   };
   const closeAllSessions = () => {
     for (const sid of Object.keys(sessions)) disposeSession(sid);
@@ -94,9 +89,27 @@ export async function startHttp(config: Config): Promise<() => void> {
       return;
     }
     limiter.recordAuthSuccess(ip);
+    const sid = req.header('mcp-session-id');
+    if (sid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)) { res.status(400).json({error:'Sessão inválida.'}); return; }
+    if(req.method !== 'DELETE') {
+      if(globalRequests >= 64) { res.status(429).json({error:'Limite global de requests.'}); return; }
+      globalRequests++;
+      let released=false;
+      const release=()=>{if(!released){released=true;globalRequests--;}};
+      res.once('finish',release);res.once('close',release);
+    }
+    const entry = sid ? sessions[sid] : undefined;
+    if (entry && req.method !== 'DELETE') {
+      if (entry.requests >= (config.limits ?? DEFAULT_LIMITS).concurrentRequests) { res.status(429).json({error:'Limite de requests simultâneos atingido.'}); return; }
+      entry.requests++;
+      let done=false;
+      const release=()=>{if(!done){done=true;entry.requests--;}};
+      res.once('finish',release);res.once('close',release);
+    }
     next();
   });
 
+  app.use("/mcp", express.json({limit:"8mb"}));
   app.post("/mcp", async (req: Request, res: Response) => {
     try {
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -106,7 +119,7 @@ export async function startHttp(config: Config): Promise<() => void> {
         transport = sessions[sessionId].transport;
         touch(sessionId);
       } else if (!sessionId && isInitializeRequest(req.body)) {
-        if (Object.keys(sessions).length >= config.maxSessions) {
+        if (Object.keys(sessions).length + initializing >= config.maxSessions) {
           res.status(429).json({ error: "Limite de sessões atingido." });
           return;
         }
@@ -114,10 +127,11 @@ export async function startHttp(config: Config): Promise<() => void> {
         // Watcher/PTY/env isolados). Guardamos os recursos para descartá-los
         // quando a sessão fechar.
         const { server, resources } = buildServer(config);
+        initializing++;
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sid) => {
-            sessions[sid] = { transport, resources, lastSeen: Date.now() };
+            sessions[sid] = { transport, resources, lastSeen: Date.now(), requests: 0 };
           },
           enableDnsRebindingProtection: true,
           allowedOrigins: config.allowedOrigins,
@@ -127,14 +141,20 @@ export async function startHttp(config: Config): Promise<() => void> {
           if (transport.sessionId) disposeSession(transport.sessionId);
           else resources.dispose(); // sessão que fechou antes de inicializar
         };
-        await server.connect(transport);
+        try {
+          await server.connect(transport);
+          await transport.handleRequest(req, res, req.body);
+          if(!transport.sessionId){resources.dispose();await transport.close();}
+        } catch(e) {resources.dispose();await transport.close();throw e;}
+        finally {initializing--;}
+        return;
       } else {
         res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Sessão inválida." }, id: null });
         return;
       }
       await transport.handleRequest(req, res, req.body);
     } catch (err) {
-      process.stderr.write(`[universal-ai-bridge] erro POST /mcp: ${String(err)}\n`);
+      process.stderr.write(`[universal-ai-bridge] erro POST /mcp: erro interno\n`);
       if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "Erro interno" }, id: null });
     }
   });
@@ -149,13 +169,16 @@ export async function startHttp(config: Config): Promise<() => void> {
       touch(sessionId);
       await sessions[sessionId].transport.handleRequest(req, res);
     } catch (err) {
-      process.stderr.write(`[universal-ai-bridge] erro ${req.method} /mcp: ${String(err)}\n`);
+      process.stderr.write(`[universal-ai-bridge] erro ${req.method} /mcp: erro interno\n`);
       if (!res.headersSent) res.status(500).send("Erro interno");
     }
   };
   app.get("/mcp", sessionRequest);
   app.delete("/mcp", sessionRequest);
 
+  app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    res.status((error as {status?:number}).status === 413 ? 413 : 400).json({error:'Requisição inválida.'});
+  });
   app.get("/health", (_req, res) => res.json({ ok: true }));
 
   const sweep = setInterval(() => {
@@ -194,6 +217,7 @@ export async function startHttp(config: Config): Promise<() => void> {
 
   return () => {
     clearInterval(sweep);
+    limiter.dispose();
     closeAllSessions();
     httpServer.close();
     admin.close();

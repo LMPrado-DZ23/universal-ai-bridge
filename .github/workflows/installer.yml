@@ -4,73 +4,122 @@ on:
   push:
     tags: ["v*"]
     branches: [main]
-    paths:
-      - "installer/**"
-      - "src/**"
-      - "package.json"
-      - ".github/workflows/installer.yml"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
-# Padrão restritivo; só o job de release ganha contents:write.
+concurrency:
+  group: installer-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
+  cancel-stale-previews:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel superseded previews including older workflow definitions
+        shell: pwsh
+        env:
+          GH_ACTIONS_TOKEN: ${{ github.token }}
+          PREVIEW_BRANCH: ${{ github.head_ref }}
+        run: |
+          $headers=@{Authorization="Bearer $env:GH_ACTIONS_TOKEN";Accept='application/vnd.github+json'}
+          $base="$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY/actions"
+          $runs=Invoke-RestMethod -Uri "$base/workflows/installer.yml/runs?per_page=30" -Headers $headers
+          foreach($run in $runs.workflow_runs) {
+            if($run.run_number -lt [long]$env:GITHUB_RUN_NUMBER -and $run.head_branch -eq $env:PREVIEW_BRANCH -and $run.event -eq 'pull_request' -and $run.status -in @('queued','in_progress','waiting','pending')) {
+              try {Invoke-RestMethod -Method Post -Uri "$base/runs/$($run.id)/cancel" -Headers $headers | Out-Null}
+              catch {if([int]$_.Exception.Response.StatusCode -ne 409){throw 'Unable to cancel obsolete preview.'}}
+            }
+          }
   build:
+    timeout-minutes: 15
     runs-on: windows-latest
-    env:
-      CODE_SIGN_PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
-      CODE_SIGN_PASSWORD: ${{ secrets.CODE_SIGN_PASSWORD }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install deps, build, test
-        run: |
-          npm ci
-          npm run build
-          npm test
+      - name: Production signing prerequisite
+        env:
+          CODE_SIGN_PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
+          CODE_SIGN_PASSWORD: ${{ secrets.CODE_SIGN_PASSWORD }}
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
-
-      - name: Gerar SBOM (CycloneDX, só produção)
+        run: |
+          if (-not $env:CODE_SIGN_PFX_BASE64 -or -not $env:CODE_SIGN_PASSWORD) { throw 'Production tag requires signing credentials.' }
+      - run: npm ci
+      - run: npm run check:source
+      - run: npm run build
+      - run: npm run typecheck
+      - name: Installed Windows lifecycle
+        shell: powershell
+        timeout-minutes: 3
+        run: ./scripts/test-installed-lifecycle.ps1
+      - name: Windows private persistence regression
+        run: npx vitest run tests/persistence-regression.test.ts
+      - run: npm test
+      - run: npm audit --omit=dev
+      - run: npm audit --audit-level=moderate
+      - name: Installer checks and negative signature gate
+        shell: pwsh
+        run: ./scripts/test-installer.ps1
+      - name: Windows PowerShell 5.1 installer checks
+        shell: powershell
+        run: ./scripts/test-installer.ps1
+      - name: Generate SBOM
+        shell: pwsh
         run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
-        shell: pwsh
-
-      - name: Prune to production dependencies
-        run: npm prune --omit=dev
-        shell: pwsh
-
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
-        shell: pwsh
-
+      - run: npm prune --omit=dev
       - name: Compile installer
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\UniversalAI-Bridge.iss"
-          if (-not (Test-Path "installer\Output\UniversalAI-Bridge-Setup.exe")) { throw "Instalador não foi gerado." }
         shell: pwsh
-
-      - name: Sign installer (se houver certificado)
-        if: env.CODE_SIGN_PFX_BASE64 != ''
-        run: '& "installer\scripts\sign.ps1" -File "installer\Output\UniversalAI-Bridge-Setup.exe" -PfxBase64 "$env:CODE_SIGN_PFX_BASE64" -Password "$env:CODE_SIGN_PASSWORD"'
-        shell: pwsh
-
-      - name: Empacotar assets + checksums
         run: |
+          $compiler='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Runner has no Inno Setup compiler.' }
+          & $compiler 'installer\UniversalAI-Bridge.iss'
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'installer\Output\UniversalAI-Bridge-Setup.exe')) { throw 'Installer compilation failed.' }
+      - name: Actual EXE installation lifecycle
+        shell: powershell
+        timeout-minutes: 10
+        run: ./scripts/test-windows-exe.ps1
+      - name: Upload EXE validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-exe-validation
+          path: validation-artifacts/exe-*
+          if-no-files-found: ignore
+      - name: Sign production installer
+        env:
+          CODE_SIGN_PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
+          CODE_SIGN_PASSWORD: ${{ secrets.CODE_SIGN_PASSWORD }}
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: ./installer/scripts/sign.ps1 -File 'installer/Output/UniversalAI-Bridge-Setup.exe'
+      - name: Enforce signing and package checksums
+        shell: pwsh
+        run: |
+          $production='${{ github.ref }}'.StartsWith('refs/tags/v')
+          $file='installer/Output/UniversalAI-Bridge-Setup.exe'
+          & ./installer/scripts/assert-release.ps1 -File $file -Production:$production
+          $name=if($production){'UniversalAI-Bridge-Setup.exe'}else{'UniversalAI-Bridge-Setup-preview-unsigned.exe'}
           New-Item -ItemType Directory -Force dist-release | Out-Null
-          Copy-Item "installer\Output\UniversalAI-Bridge-Setup.exe" dist-release\
-          Copy-Item "sbom.cdx.json" dist-release\
-          $h = (Get-FileHash "dist-release\UniversalAI-Bridge-Setup.exe" -Algorithm SHA256).Hash.ToLower()
-          "$h  UniversalAI-Bridge-Setup.exe" | Out-File "dist-release\SHA256SUMS.txt" -Encoding ascii
-          Get-Content "dist-release\SHA256SUMS.txt"
-        shell: pwsh
-
+          Copy-Item $file "dist-release/$name"
+          Copy-Item sbom.cdx.json dist-release/
+          $h=(Get-FileHash "dist-release/$name" -Algorithm SHA256).Hash.ToLower()
+          "$h  $name" | Out-File dist-release/SHA256SUMS.txt -Encoding ascii
+          $sig=Get-AuthenticodeSignature $file
+          "Authenticode: $($sig.Status); production: $production" | Out-File dist-release/SIGNING-STATUS.txt -Encoding utf8
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: release-assets
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && 'release-assets' || 'preview-unsigned-assets' }}
           path: dist-release/*
           if-no-files-found: error
 
@@ -79,7 +128,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
-      contents: write # só aqui, e só em tags v*
+      contents: write
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

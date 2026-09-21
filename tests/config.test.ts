@@ -55,7 +55,7 @@ describe("loadConfig fail-closed (C13)", () => {
   it("adminPort derivado inválido (BRIDGE_PORT=65535) falha (C4)", () => {
     clear();
     process.env.BRIDGE_PORT = "65535";
-    process.env.BRIDGE_TOKEN = "0123456789abcdef0123456789abcdef";
+    process.env.BRIDGE_TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     expect(() => loadConfig()).toThrow(/admin/i);
   });
 
@@ -63,14 +63,14 @@ describe("loadConfig fail-closed (C13)", () => {
     clear();
     process.env.BRIDGE_PORT = "65535";
     process.env.BRIDGE_ADMIN_PORT = "8788";
-    process.env.BRIDGE_TOKEN = "0123456789abcdef0123456789abcdef";
+    process.env.BRIDGE_TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     expect(loadConfig().adminPort).toBe(8788);
   });
 
   it("config válida (safe) carrega", () => {
     clear();
     process.env.BRIDGE_PORT = "8787";
-    process.env.BRIDGE_TOKEN = "0123456789abcdef0123456789abcdef";
+    process.env.BRIDGE_TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const cfg = loadConfig();
     expect(cfg.mode).toBe("safe");
     expect(cfg.port).toBe(8787);

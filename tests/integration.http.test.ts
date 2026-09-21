@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 const distEntry = resolve(__dirname, "..", "dist", "index.js");
 const PORT = 8900 + Math.floor(Math.random() * 90);
-const TOKEN = "tok-integração-123";
+const TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const BASE = `http://127.0.0.1:${PORT}`;
 
 let srv: ChildProcess | undefined;

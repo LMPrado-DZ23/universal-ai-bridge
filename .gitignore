@@ -9,7 +9,5 @@ admin.secret
 *.secret
 sbom.cdx.json
 sbom*.json
-Apps
-healthcheck
-ou
-$(git
+validation-artifacts/
+dist-release/

@@ -1,44 +1,11 @@
+import { isolated } from "../isolate.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { readdirSync, lstatSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
 import { safeResolve } from "../security/paths.js";
 import { ok, fail, type Ctx } from "./helpers.js";
 
-const SKIP_DIRS = new Set([".git", "node_modules", "dist", ".next", "build", ".cache"]);
-const NUL = String.fromCharCode(0);
-
-/**
- * Percorre arquivos sob root PULANDO symlinks (arquivo e diretorio) via lstat,
- * para nao seguir links que escapem do workspace. Ignora diretorios pesados.
- */
-function* walk(root: string, maxEntries: number): Generator<string> {
-  let seen = 0;
-  const stack = [root];
-  while (stack.length) {
-    const dir = stack.pop() as string;
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      if (e.isSymbolicLink()) continue; // nunca segue symlink
-      const full = join(dir, e.name);
-      if (e.isDirectory()) {
-        if (!SKIP_DIRS.has(e.name)) stack.push(full);
-      } else if (e.isFile()) {
-        yield full;
-        if (++seen >= maxEntries) return;
-      }
-    }
-  }
-}
-
 export function registerSearchTools(server: McpServer, ctx: Ctx): void {
   const ws = ctx.config.workspace;
-  const rel = (abs: string) => relative(ws, abs).split(sep).join("/");
 
   server.registerTool(
     "search_files",
@@ -46,7 +13,7 @@ export function registerSearchTools(server: McpServer, ctx: Ctx): void {
       title: "Buscar arquivos por nome",
       description: "Procura arquivos cujo nome contem o termo (recursivo, ignora .git/node_modules/dist, nao segue symlinks).",
       inputSchema: {
-        query: z.string().describe("Substring do nome do arquivo (case-insensitive)"),
+        query: z.string().min(1).max(512).describe("Substring do nome do arquivo (case-insensitive)"),
         path: z.string().default(".").describe("Diretorio base, relativo ao workspace"),
         max: z.number().int().min(1).max(1000).default(200),
       },
@@ -54,14 +21,7 @@ export function registerSearchTools(server: McpServer, ctx: Ctx): void {
     async ({ query, path, max }) => {
       try {
         const base = safeResolve(ws, path);
-        const q = query.toLowerCase();
-        const hits: string[] = [];
-        for (const f of walk(base, 20000)) {
-          if (f.toLowerCase().includes(q)) {
-            hits.push(rel(f));
-            if (hits.length >= max) break;
-          }
-        }
+        const hits=await isolated<string[]>({kind:'names',base,workspace:ws,query,max},5000,ctx.signal);
         ctx.audit.record({ tool: "search_files", decision: "allow", args: { query, path } });
         return ok(hits.length ? hits.join("\n") : "(nenhum arquivo encontrado)");
       } catch (e) {
@@ -78,7 +38,7 @@ export function registerSearchTools(server: McpServer, ctx: Ctx): void {
         "Procura texto/regex dentro dos arquivos do workspace e retorna arquivo:linha: trecho. " +
         "Ignora .git/node_modules/dist, nao segue symlinks e pula binarios.",
       inputSchema: {
-        query: z.string().describe("Texto ou regex a procurar"),
+        query: z.string().min(1).max(512).describe("Texto ou regex a procurar"),
         path: z.string().default(".").describe("Diretorio base, relativo ao workspace"),
         is_regex: z.boolean().default(false),
         ignore_case: z.boolean().default(true),
@@ -88,44 +48,7 @@ export function registerSearchTools(server: McpServer, ctx: Ctx): void {
     async ({ query, path, is_regex, ignore_case, max }) => {
       try {
         const base = safeResolve(ws, path);
-        let re: RegExp;
-        try {
-          const pattern = is_regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          re = new RegExp(pattern, ignore_case ? "i" : "");
-        } catch (err) {
-          return fail(`Regex invalida: ${(err as Error).message}`);
-        }
-        const maxFileBytes = ctx.config.policy.files.maxReadBytes;
-        const hits: string[] = [];
-        outer: for (const f of walk(base, 20000)) {
-          let st;
-          try {
-            st = lstatSync(f); // lstat: nao segue link (defesa extra)
-          } catch {
-            continue;
-          }
-          if (st.isSymbolicLink() || !st.isFile() || st.size > maxFileBytes) continue;
-          // Revalida o caminho real dentro do workspace antes de ler.
-          try {
-            safeResolve(ws, rel(f));
-          } catch {
-            continue;
-          }
-          let content: string;
-          try {
-            content = readFileSync(f, "utf8");
-          } catch {
-            continue;
-          }
-          if (content.includes(NUL)) continue; // binario
-          const lines = content.split(/\r?\n/);
-          for (let i = 0; i < lines.length; i++) {
-            if (re.test(lines[i])) {
-              hits.push(`${rel(f)}:${i + 1}: ${lines[i].trim().slice(0, 200)}`);
-              if (hits.length >= max) break outer;
-            }
-          }
-        }
+        const hits = await isolated<string[]>({kind: 'search', base, workspace: ws, query, regex: is_regex, ignoreCase: ignore_case, max, maxFileBytes: ctx.config.policy.files.maxReadBytes},5000,ctx.signal);
         ctx.audit.record({ tool: "search_content", decision: "allow", args: { query, path } });
         return ok(hits.length ? hits.join("\n") : "(nenhuma ocorrencia)");
       } catch (e) {

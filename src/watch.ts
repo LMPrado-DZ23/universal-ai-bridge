@@ -24,7 +24,8 @@ export class Watcher {
   private static all = new Set<Watcher>();
   private cap = 1000;
 
-  constructor() {
+  private destroyed = false;
+  constructor(private maxActive = 8) {
     Watcher.all.add(this);
   }
 
@@ -33,6 +34,8 @@ export class Watcher {
   }
 
   start(absPath: string, displayPath: string, recursive: boolean): string {
+    if (this.destroyed) throw new Error("Sessão encerrada.");
+    if (this.entries.size >= this.maxActive || [...Watcher.all].reduce((n,w) => n + w.entries.size, 0) >= 64) throw new Error("Limite de watchers atingido.");
     const id = randomBytes(5).toString("hex");
     const fsw = watch(absPath, { recursive }, (eventType, filename) => {
       const entry = this.entries.get(id);
@@ -44,6 +47,7 @@ export class Watcher {
         at: new Date().toISOString(),
       });
     });
+    fsw.on("error", () => { fsw.close(); this.entries.delete(id); });
     this.entries.set(id, { id, path: displayPath, fsw, events: [] });
     return id;
   }
@@ -83,6 +87,8 @@ export class Watcher {
 
   /** Encerra tudo e remove do registro estático (cleanup de sessão). */
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.stopAll();
     Watcher.all.delete(this);
   }

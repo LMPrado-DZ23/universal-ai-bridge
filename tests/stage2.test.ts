@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 // Modo ADMIN + aprovação auto para exercitar env/allowlist/download/watch/media.
 const distEntry = resolve(__dirname, "..", "dist", "index.js");
 const PORT = 8960 + Math.floor(Math.random() * 9);
-const TOKEN = "tok-stage2-0123456789abcdef";
+const TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const BASE = `http://127.0.0.1:${PORT}`;
 let srv: ChildProcess | undefined;
 let ws: string;

@@ -1,4 +1,27 @@
-# Changelog
+## Validação adicional do EXE Windows
+
+- Instalação local por padrão; túnel remoto exige escolha explícita.
+- Teste do EXE real: instalação, MCP, upgrade, desinstalação e revogação.
+- Aguarda inicialização da tarefa e sinaliza falha de pós-instalação com código 10.
+- Preserva configuração existente e dados do usuário.
+
+# Revisão sobre 0.7.0 — PR #1, sem nova release
+
+- Corrige seleção de shims POSIX no Windows; npm/npx usam batch validado, mantendo shell:false.
+- Preserva erro de spawn e UTF-8 entre chunks; limites globais, lifecycle e regressões de árvore.
+- Escrita atômica de documentos/arquivos; projeto informa progresso parcial em falha.
+- Revogação persistida prevalece sobre token herdado; arquivo explícito ilegível falha fechado.
+- Configuração privada e idempotente, pré-validação de portas e limpeza no launcher.
+- Node MSI 22.23.2 com hash/editor fixados; release exige assinatura; preview unsigned separado.
+- CI multiplataforma, smoke autenticado do doctor, auditoria completa, SBOM e build do instalador.
+- Documentação e matriz comparativa factual; logs gerados movidos para artifacts.
+
+### Continuação da revisão 0.7.0 — instalação Windows
+
+- Teste integrado dos scripts instalados com servidor MCP real e caminhos com espaços.
+- Parada com estado inválido retorna erro; desinstalação interrompe limpeza/purga em falha.
+- Painel reporta falha de parada e remove endpoint remoto obsoleto.
+- CI limita duração e cancela previews anteriores sem ampliar permissões do build.
 
 ## 0.7.0 — Fase 2: executor sem shell (program + args)
 

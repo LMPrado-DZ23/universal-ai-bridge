@@ -32,10 +32,10 @@ export function registerJobTools(server: McpServer, ctx: Ctx): void {
         "Inicia um comando de longa duração (sem shell) e retorna um job_id. Prefira program+args; " +
         "'command' é aceito por compatibilidade (parser restrito). job_output/job_write/job_cancel. Sujeito a política e aprovação.",
       inputSchema: {
-        program: z.string().optional().describe("Nome do binário (ex.: 'npm'); resolvido pelo PATH"),
-        args: z.array(z.string()).default([]).describe("Argumentos (não passam por shell)"),
-        command: z.string().optional().describe("Legado: comando único; convertido por parser restrito"),
-        cwd: z.string().default(".").describe("Diretório relativo ao workspace"),
+        program: z.string().max(256).optional().describe("Nome do binário (ex.: 'npm'); resolvido pelo PATH"),
+        args: z.array(z.string().max(65536)).max(256).default([]).describe("Argumentos (não passam por shell)"),
+        command: z.string().max(65536).optional().describe("Legado: comando único; convertido por parser restrito"),
+        cwd: z.string().max(4096).default(".").describe("Diretório relativo ao workspace"),
         confirm_token: z.string().optional(),
       },
     },
@@ -49,7 +49,7 @@ export function registerJobTools(server: McpServer, ctx: Ctx): void {
           return fail(`Bloqueado pela política: ${decision.reason}`);
         }
         const workdir = safeResolve(ctx.config.workspace, cwd);
-        const g = gate(ctx, "run_job", { program: pa.program, args: pa.args, cwd }, confirm_token);
+        const g = gate(ctx, "run_job", { program: pa.program, args: pa.args, cwd, env: { ...ctx.sessionEnv } }, confirm_token);
         if (!g.proceed) return g.result;
         const id = ctx.jobs.start(pa.program, pa.args, workdir, ctx.sessionEnv);
         ctx.audit.record({ tool: "run_job", decision: "executed", args: { cmd: sanitizeCommand(label), cwd }, detail: `job=${id}` });
@@ -85,8 +85,8 @@ export function registerJobTools(server: McpServer, ctx: Ctx): void {
         "Retorna a saída nova desde os cursores dados. Chame repetidamente passando os cursores retornados para 'streamar' a saída.",
       inputSchema: {
         job_id: z.string(),
-        since_stdout: z.number().default(0).describe("Cursor de stdout (use o nextStdoutCursor anterior)"),
-        since_stderr: z.number().default(0).describe("Cursor de stderr (use o nextStderrCursor anterior)"),
+        since_stdout: z.number().int().min(0).default(0).describe("Cursor de stdout (use o nextStdoutCursor anterior)"),
+        since_stderr: z.number().int().min(0).default(0).describe("Cursor de stderr (use o nextStderrCursor anterior)"),
       },
     },
     async ({ job_id, since_stdout, since_stderr }) => {
@@ -103,10 +103,11 @@ export function registerJobTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Escrever no stdin do job",
       description: "Envia texto para o stdin de um job em execução (para processos interativos). Adicione \\n se precisar de Enter.",
-      inputSchema: { job_id: z.string(), input: z.string() },
+      inputSchema: { job_id: z.string(), input: z.string().max(65536) },
     },
     async ({ job_id, input }) => {
       try {
+        if(ctx.config.auditRequired)ctx.audit.record({tool:"job_write",decision:"allow",args:{}});
         ctx.jobs.write(job_id, input);
         ctx.audit.record({ tool: "job_write", decision: "executed", args: { job_id, bytes: input.length } });
         return ok(`✔ Enviado ao stdin de ${job_id} (${input.length} chars)`);
@@ -125,6 +126,7 @@ export function registerJobTools(server: McpServer, ctx: Ctx): void {
     },
     async ({ job_id }) => {
       try {
+        if(ctx.config.auditRequired)ctx.audit.record({tool:"job_cancel",decision:"allow",args:{}});
         ctx.jobs.cancel(job_id);
         ctx.audit.record({ tool: "job_cancel", decision: "executed", args: { job_id } });
         return ok(`✔ Job ${job_id} cancelado (árvore de processos encerrada).`);

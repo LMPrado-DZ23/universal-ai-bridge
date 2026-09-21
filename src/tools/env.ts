@@ -21,13 +21,16 @@ export function registerEnvTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Definir variável de ambiente da sessão",
       description: "Define uma variável de ambiente aplicada aos próximos run_command/run_job.",
-      inputSchema: { name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Nome inválido"), value: z.string() },
+      inputSchema: { name: z.string().max(128).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Nome inválido"), value: z.string().max(65536) },
     },
     async ({ name, value }) => {
       if (BLOCKED_ENV.has(name.toUpperCase())) {
         ctx.audit.record({ tool: "set_env", decision: "deny", args: { name } });
         return fail(`Variável "${name}" é bloqueada (afeta resolução/carregamento de processos).`);
       }
+      if(ctx.isDisposed?.())return fail('Sessão encerrada.');
+      if(Object.keys(ctx.sessionEnv).length>=64 && !(name in ctx.sessionEnv))return fail('Limite de variáveis atingido.');
+      if(ctx.config.auditRequired)ctx.audit.record({tool:'set_env',decision:'allow',args:{name}});
       ctx.sessionEnv[name] = value;
       ctx.audit.record({ tool: "set_env", decision: "executed", args: { name } });
       return ok(`✔ ${name} definido para a sessão.`);
@@ -39,9 +42,10 @@ export function registerEnvTools(server: McpServer, ctx: Ctx): void {
     {
       title: "Remover variável da sessão",
       description: "Remove uma variável de ambiente da sessão.",
-      inputSchema: { name: z.string() },
+      inputSchema: { name: z.string().max(128) },
     },
     async ({ name }) => {
+      if(ctx.config.auditRequired)ctx.audit.record({tool:"unset_env",decision:"allow",args:{}});
       delete ctx.sessionEnv[name];
       return ok(`✔ ${name} removido.`);
     }

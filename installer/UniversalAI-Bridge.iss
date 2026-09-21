@@ -35,6 +35,8 @@ Source: "..\dist\*"; DestDir: "{app}\app\dist"; Flags: recursesubdirs createalls
 Source: "..\node_modules\*"; DestDir: "{app}\app\node_modules"; Flags: recursesubdirs createallsubdirs
 Source: "..\config\*"; DestDir: "{app}\app\config"; Flags: recursesubdirs createallsubdirs
 Source: "..\package.json"; DestDir: "{app}\app"
+Source: "..\scripts\doctor.mjs"; DestDir: "{app}\app\scripts"
+Source: "..\env.example"; DestDir: "{app}\app"
 Source: "..\SKILL.md"; DestDir: "{app}\app"
 Source: "..\LICENSE"; DestDir: "{app}"
 Source: "scripts\*"; DestDir: "{app}\scripts"; Flags: recursesubdirs createallsubdirs
@@ -53,12 +55,20 @@ Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\s
 
 [Code]
 var
+  PostInstallFailed: Boolean;
+  ConnectionPage: TInputOptionWizardPage;
   ModePage: TInputOptionWizardPage;
   AckPage: TInputQueryWizardPage;
 
 procedure InitializeWizard;
 begin
-  ModePage := CreateInputOptionPage(wpSelectDir,
+  ConnectionPage := CreateInputOptionPage(wpSelectDir,
+    'Conexao da IA', 'Escolha onde o bridge pode ser acessado.',
+    'Local funciona sem tunel. Remoto publica uma URL HTTPS e exige configuracao do cliente e token.', True, False);
+  ConnectionPage.Add('Somente neste computador (recomendado).');
+  ConnectionPage.Add('Acesso remoto por tunel Cloudflare (opt-in).');
+  ConnectionPage.SelectedValueIndex := 0;
+  ModePage := CreateInputOptionPage(ConnectionPage.ID,
     'Modo de operação',
     'Escolha quanto acesso a IA terá ao seu computador.',
     'O modo seguro é recomendado. Você pode mudar depois editando o arquivo .env.',
@@ -103,6 +113,11 @@ begin
   end;
 end;
 
+function GetConnection(): String;
+begin
+  if ConnectionPage.SelectedValueIndex = 1 then Result := 'remote' else Result := 'local';
+end;
+
 function GetMode(): String;
 begin
   if IsAdminMode() then Result := 'admin' else Result := 'safe';
@@ -121,9 +136,19 @@ begin
   Params := '-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "' +
     ExpandConstant('{app}\scripts\') + ScriptFile + '" ' + ExtraArgs;
   if Wait then
-    Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
-  else
-    Exec('powershell.exe', Params, '', SW_HIDE, ewNoWait, ResultCode);
+  begin
+    if not Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('Nao foi possivel executar: ' + ScriptFile);
+    if ResultCode <> 0 then
+      RaiseException('Etapa falhou: ' + ScriptFile + '. Instalacao nao homologada; consulte os dados preservados.');
+  end
+  else if not Exec('powershell.exe', Params, '', SW_HIDE, ewNoWait, ResultCode) then
+    RaiseException('Nao foi possivel iniciar: ' + ScriptFile);
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  if PostInstallFailed then Result := 10 else Result := 0;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -133,30 +158,31 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
+    PostInstallFailed := True;
     DataDir := ExpandConstant('{localappdata}\UniversalAIBridge');
     App := ExpandConstant('{app}');
 
     // 1) Runtime.
     RunPS('ensure-node.ps1', '', True);
-    RunPS('ensure-cloudflared.ps1', '-InstallDir "' + App + '"', True);
+
 
     // 2) Configuração (token + modo).
-    RunPS('configure.ps1', '-DataDir "' + DataDir + '" -Mode ' + GetMode() +
-      ' -Ack "' + GetAck() + '" -Port 8787', True);
+    if FileExists(DataDir + '\.env') then
+      RunPS('configure.ps1', '-DataDir "' + DataDir + '"', True)
+    else
+      RunPS('configure.ps1', '-DataDir "' + DataDir + '" -Mode ' + GetMode() +
+        ' -Ack "' + GetAck() + '" -Port 8787 -Connection ' + GetConnection(), True);
+
+    RunPS('ensure-cloudflared.ps1', '-InstallDir "' + App + '" -DataDir "' + DataDir + '"', True);
 
     // 3) Início automático + iniciar agora (roda como usuário).
     RunPS('install-task.ps1', '-InstallDir "' + App + '" -DataDir "' + DataDir + '" -RunNow', True);
 
-    // 4) Teste de saúde (best-effort; não interrompe a instalação).
-    RunPS('healthcheck.ps1', '-Port 8787 -DataDir "' + DataDir + '" -Mcp', True);
+    // 4) Teste de saude obrigatorio.
+    RunPS('healthcheck.ps1', '-DataDir "' + DataDir + '" -Mcp -WaitSeconds 45', True);
+    PostInstallFailed := False;
 
-    // 5) Copia o endpoint atual para a área de transferência (se já houver túnel).
-    Exec('powershell.exe',
-      '-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "try { $s = Get-Content ''' +
-      DataDir + '\state.json'' -Raw | ConvertFrom-Json; if ($s.endpoint) { Set-Clipboard $s.endpoint } } catch {}"',
-      '', SW_HIDE, ewWaitUntilTerminated, RC);
+    // Endpoint/credenciais sao copiados apenas por acao explicita no painel.
 
-    // 6) Abre a página de conectores do ChatGPT.
-    ShellExec('open', 'https://chatgpt.com/#settings/Connectors', '', '', SW_SHOWNORMAL, ewNoWait, RC);
   end;
 end;
