@@ -13,12 +13,20 @@ if($DataDir -and -not $PSBoundParameters.ContainsKey('Port')) {
 }
 $base = "http://127.0.0.1:$Port"
 
+# Installation is ready only after the launcher commits its process identity.
+if($DataDir){. (Join-Path $PSScriptRoot 'private-state.ps1')}
 # /health
 $deadline=[DateTime]::UtcNow.AddSeconds($WaitSeconds)
 do {
   try {
     $health = Invoke-RestMethod -Uri "$base/health" -TimeoutSec 2 -UseBasicParsing
     if (-not $health.ok) { throw "/health nao retornou ok." }
+    if($DataDir) {
+      $state=Get-Content -LiteralPath (Join-Path $DataDir 'state.json') -Raw | ConvertFrom-Json
+      if($state.port -ne $Port -or -not (Test-BridgeIdentity $state.nodeIdentity)){
+        throw 'Launcher ainda nao confirmou a identidade do processo.'
+      }
+    }
     break
   } catch {
     if([DateTime]::UtcNow -ge $deadline){throw 'Bridge nao ficou saudavel no prazo de inicializacao.'}

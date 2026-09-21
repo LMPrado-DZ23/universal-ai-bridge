@@ -182,3 +182,10 @@ A rodada 35586371762 passou nas asserções funcionais do EXE, incluindo revoga�
 mas falhou ao ler um log ainda aberto pelo processo temporário do desinstalador.
 O teste agora aguarda a liberação exclusiva do log por até 15 segundos e confere
 também a limpeza da reinstalação rejeitada; erro de coleta continua bloqueando CI.
+
+
+A repetição 35587000709 expôs uma segunda janela: HTTP/MCP respondia antes de
+o launcher gravar state.json. O healthcheck com DataDir agora exige também
+porta e identidade viva do processo persistidas; o instalador só conclui depois
+desse registro, necessário à parada segura. O teste do EXE lê o estado sem
+espera própria, cobrindo esse contrato de prontidão.
