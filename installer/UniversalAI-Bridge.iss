@@ -55,6 +55,7 @@ Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\s
 
 [Code]
 var
+  PostInstallFailed: Boolean;
   ConnectionPage: TInputOptionWizardPage;
   ModePage: TInputOptionWizardPage;
   AckPage: TInputQueryWizardPage;
@@ -145,6 +146,11 @@ begin
     RaiseException('Nao foi possivel iniciar: ' + ScriptFile);
 end;
 
+function GetCustomSetupExitCode: Integer;
+begin
+  if PostInstallFailed then Result := 10 else Result := 0;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   DataDir, App: String;
@@ -152,6 +158,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
+    PostInstallFailed := True;
     DataDir := ExpandConstant('{localappdata}\UniversalAIBridge');
     App := ExpandConstant('{app}');
 

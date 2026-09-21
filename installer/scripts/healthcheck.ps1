@@ -2,6 +2,7 @@
 param(
   [int]$Port = 8787,
   [string]$DataDir = "",
+  [ValidateRange(0,120)][int]$WaitSeconds = 0,
   [switch]$Mcp
 )
 $ErrorActionPreference = "Stop"
@@ -13,8 +14,17 @@ if($DataDir -and -not $PSBoundParameters.ContainsKey('Port')) {
 $base = "http://127.0.0.1:$Port"
 
 # /health
-$health = Invoke-RestMethod -Uri "$base/health" -TimeoutSec 5 -UseBasicParsing
-if (-not $health.ok) { throw "/health nao retornou ok." }
+$deadline=[DateTime]::UtcNow.AddSeconds($WaitSeconds)
+do {
+  try {
+    $health = Invoke-RestMethod -Uri "$base/health" -TimeoutSec 2 -UseBasicParsing
+    if (-not $health.ok) { throw "/health nao retornou ok." }
+    break
+  } catch {
+    if([DateTime]::UtcNow -ge $deadline){throw 'Bridge nao ficou saudavel no prazo de inicializacao.'}
+    Start-Sleep -Milliseconds 250
+  }
+} while($true)
 Write-Output "OK: /health respondeu { ok: true }"
 
 if ($Mcp) {

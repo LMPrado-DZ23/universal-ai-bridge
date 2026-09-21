@@ -43,8 +43,10 @@ try {
   if(Test-Path (Join-Path $install 'app/dist/index.js')){throw 'Uninstall left application.'}
   $completed+='uninstall preserves data'
   Write-Output 'PASS: actual EXE install, authenticated MCP, limited task, upgrade, uninstall and preserved user data.'
-} finally {
-  @{completed=$completed;interactiveWizardTested=$false;windows=[Environment]::OSVersion.VersionString;userInteractive=[Environment]::UserInteractive} | ConvertTo-Json | Set-Content (Join-Path $evidence 'exe-results.json') -Encoding UTF8
+ } finally {
+  $taskInfo=Get-ScheduledTaskInfo -TaskName 'UniversalAIBridge' -ErrorAction SilentlyContinue
+  $taskState=Get-ScheduledTask -TaskName 'UniversalAIBridge' -ErrorAction SilentlyContinue
+  @{lastTaskResult=$taskInfo.LastTaskResult;taskState=[string]$taskState.State;completed=$completed;interactiveWizardTested=$false;windows=[Environment]::OSVersion.VersionString;userInteractive=[Environment]::UserInteractive} | ConvertTo-Json | Set-Content (Join-Path $evidence 'exe-results.json') -Encoding UTF8
   # Never display credentials. Inno logs have no tokens in script arguments; redact defensively.
   Get-ChildItem $evidence -Filter 'exe-*.log' | ForEach-Object {
     $log=[IO.File]::ReadAllText($_.FullName)

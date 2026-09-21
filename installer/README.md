@@ -20,6 +20,9 @@ do usuário após CI verde e homologação Windows.
 
 ## Comportamento previsto
 
+- Instalacao nova usa conexao local por padrao, sem baixar/iniciar Cloudflare.
+  O wizard oferece acesso remoto por opt-in; a escolha persiste como
+  `BRIDGE_CONNECTION=local|remote`. Upgrade preserva a configuracao existente.
 - Safe é padrão; terminal desligado; Docker desligado. Admin exige frase explícita.
 - Node MSI fixado em **22.23.2**, hash versionado e editor OpenJS Foundation.
   Runtime já instalado e compatível é reutilizado; sua origem é responsabilidade

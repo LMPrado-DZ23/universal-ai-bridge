@@ -432,3 +432,12 @@ Windows resolve `.exe/.com/.cmd/.bat`, ignorando shims POSIX sem extensão.
 Batch usa `cmd.exe` com switches fixos e argumentos restritos: aspas, expansões,
 operadores, controles e barra invertida final são recusados; use um executável
 nativo para argumentos literais desses tipos. `shell:false` permanece obrigatório.
+
+### Conexão do instalador Windows
+
+Instalações novas começam em conexão local (`BRIDGE_CONNECTION=local`), sem
+publicar um túnel nem baixar cloudflared. A página de conexão do wizard permite
+optar por acesso remoto, mantendo token e verificações de integridade obrigatórios.
+Upgrade preserva a configuração anterior; ausência da chave em instalações
+antigas mantém o comportamento remoto anterior. Modo de conexão e modo de
+permissões (`safe`/`admin`) são escolhas independentes.

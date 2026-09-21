@@ -164,7 +164,7 @@ $timer.Add_Tick({
       $txtEndpoint.Text = $state.endpoint
     } else {
       $txtEndpoint.Text = ""
-      $lblTunnel.Text = "○ Túnel: sem endpoint (rode 'Religar acesso')"
+      $lblTunnel.Text = if((Get-EnvVal 'BRIDGE_CONNECTION') -eq 'local') { "Conexao local: tunel remoto desativado" } else { "Túnel: sem endpoint ativo" }
       $lblTunnel.ForeColor = [System.Drawing.Color]::Gray
     }
     $lblMode.Text = "Modo: $(if($state){$state.mode}else{'?'})   |   Header do conector: Authorization: Bearer <seu token do .env>"

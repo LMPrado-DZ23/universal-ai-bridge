@@ -11,6 +11,9 @@ New-Item -ItemType Directory -Path $temp | Out-Null
 try {
   & (Join-Path $PSScriptRoot '../installer/scripts/configure.ps1') -DataDir $temp
   $before=Get-Content (Join-Path $temp '.env') -Raw
+  if($before -notmatch '(?m)^BRIDGE_CONNECTION=local\r?$'){throw 'New installation did not default to local.'}
+  & (Join-Path $PSScriptRoot '../installer/scripts/ensure-cloudflared.ps1') -InstallDir $temp -DataDir $temp
+  if(Test-Path (Join-Path $temp 'bin/cloudflared.exe')){throw 'Local mode downloaded a tunnel binary.'}
   & (Join-Path $PSScriptRoot '../installer/scripts/configure.ps1') -DataDir $temp
   if($before -cne (Get-Content (Join-Path $temp '.env') -Raw)){throw 'Configure is not idempotent.'}
   $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
