@@ -45,7 +45,9 @@ Sem banco, contas multitenant ou frontend web. Painel local Windows em WinForms.
   saída, workers e requests; rate limiter limita buckets e descarta timer no close.
   Recursos e decisões são descartados com a sessão. Cursores são offsets UTF-16,
   enquanto limites de retenção são calculados em bytes.
-- Workers limitados para documentos/regex; ZIP valida diretório, tamanho real,
+- PDF é processado em subprocesso com timeout/cancelamento, mesma cota global e
+  heap limitado; falha nativa fica fora do servidor. Demais documentos/regex usam
+  workers limitados; ZIP valida diretório, tamanho real,
   flags locais e ZIP64; documentos têm teto antes de parsing.
 - Escrita em temporário, fsync e rename de arquivos/documentos/downloads, com
   revalidação no commit. create_project retorna caminhos concluídos em falha
@@ -87,6 +89,18 @@ Comandos de aceite: npm ci; npm run check:source; npm run build; npm run typeche
 npm test -- --reporter=verbose; npm audit --omit=dev; npm audit --audit-level=moderate;
 node scripts/smoke-doctor.mjs; git diff --check; git fsck --no-reflogs --full.
 O smoke executa o mesmo script de `npm run doctor` contra servidor real temporário.
+
+## Regressão adicional de PDF no Windows
+
+A repetição da suíte no commit de evidências perdeu o processo durante read_pdf
+(ECONNRESET seguido de ECONNREFUSED), apesar da matriz principal aprovada.
+O relato upstream https://github.com/mozilla/pdf.js/issues/21934 descreve falha
+nativa compatível ao importar PDF.js 5.x em worker_threads no Windows. Sem dump,
+a causa nativa exata permanece inferida. PDF passou a usar processo filho e IPC,
+sem segredos herdados, com encerramento aguardado antes de liberar a cota.
+A regressão executa cinco leituras reais consecutivas, cancelamento e deadline.
+As evidências anteriores continuam identificadas pelo SHA; os checks mais recentes
+do PR são necessários para validar este ajuste adicional.
 
 ## Riscos residuais e limites
 

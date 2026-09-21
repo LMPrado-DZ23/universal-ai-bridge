@@ -1,7 +1,7 @@
 {
   "validated_head": "92cc4fec71ab4f89443538f316911118c49b3eed",
   "date": "2026-09-21",
-  "scope": "Pre-documentation commit; final PR checks must also pass. No release or interactive installation homologation.",
+  "scope": "Historical clean-checkout and CI evidence for validated_head. Additional PDF process isolation is described below; latest PR checks validate the final commit.",
   "local_clean_checkout": {
     "node": "24.19.0",
     "platform": "Linux",
@@ -66,5 +66,24 @@
     "Advanced document editing",
     "Automatic updates with transactional rollback",
     "Linux/macOS approval GUI"
-  ]
+  ],
+  "additional_pdf_isolation": {
+    "reason": "Intermittent Windows server exit during PDF parsing; native PDF.js worker fault suspected, exact native cause not confirmed by dump.",
+    "upstream_report": "https://github.com/mozilla/pdf.js/issues/21934",
+    "behavior": "PDF in a bounded child process; non-PDF tasks remain in worker threads.",
+    "local_tests": 208,
+    "local_test_files": 25,
+    "local_checks_passed": [
+      "npm test",
+      "check:source",
+      "typecheck",
+      "git diff --check"
+    ],
+    "regressions": [
+      "Five consecutive real PDF reads",
+      "Child process cancellation and quota release",
+      "Child process deadline"
+    ],
+    "final_ci": "https://github.com/LMPrado-DZ23/universal-ai-bridge/pull/1/checks"
+  }
 }

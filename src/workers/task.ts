@@ -1,4 +1,4 @@
-import { parentPort, workerData as task } from 'node:worker_threads';
+import { parentPort, workerData } from 'node:worker_threads';
 import { readFileSync, lstatSync, opendirSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
@@ -47,7 +47,7 @@ function* walk(root: string): Generator<string> {
     } finally { dir.closeSync(); }
   }
 }
-async function main() {
+async function main(task: Record<string, any>) {
   if(task.kind==='edit') {
     const re=new RegExp(task.pattern,task.all?'g':'');
     let count=0;
@@ -112,4 +112,14 @@ async function main() {
   }
   throw new Error('Operação de worker desconhecida.');
 }
-main().then(value=>parentPort!.postMessage({value}),e=>parentPort!.postMessage({error:e instanceof Error?e.message:'Falha de parsing.'}));
+function run(task: Record<string, any>, reply: (result: unknown) => void) {
+  void main(task).then(value => reply({value}), e => reply({error:e instanceof Error ? e.message : 'Falha de parsing.'}));
+}
+if (parentPort) {
+  run(workerData, result => parentPort!.postMessage(result));
+} else {
+  // PDF imports run on a child process main thread: native faults cannot kill the bridge.
+  process.once('message', task => run(task as Record<string, any>, result => {
+    process.send!(result as object, () => process.disconnect());
+  }));
+}

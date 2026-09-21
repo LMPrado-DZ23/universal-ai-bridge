@@ -369,7 +369,7 @@ antigo. Sem token persistido, o HTTP recusa iniciar até reconfiguração local.
 | Planilha: linhas / colunas / células totais | 10.000 / 100 / 100.000 |
 | Texto extraído / PDF | 200.000 caracteres / 200 páginas |
 | Parsing / regex e busca | 10 s / 5 s |
-| Workers globais | 4; heap V8 128 MB por worker |
+| Parsers/buscas globais | 4; heap V8 128 MB por worker/processo PDF |
 | Busca | 20.000 entradas, 20 MB, 200.000 linhas |
 | Ler múltiplos / criar projeto | 32 / 64 arquivos; teto agregado da política |
 | Audit | rotação ~1 MB, até 8 arquivos, 7 dias |
@@ -417,7 +417,7 @@ quando não há certificado válido. Não considere esta revisão release homolo
 
 Além das cotas por sessão: 256 jobs retidos, 32 PTYs retidos, 64 watchers,
 4.096 confirmações, 64 requests MCP simultâneos e 32 MB de saída por tipo de
-manager (jobs e PTYs separadamente). Workers: 2 por sessão, 4 globais. A tabela
+manager (jobs e PTYs separadamente). Workers/processos PDF: 2 por sessão, 4 globais. PDF usa processo filho para conter falhas nativas; os demais parsers usam workers. A tabela
 do rate limiter comporta 4.096 IPs e é limpa periodicamente; atrás do túnel,
 clientes compartilham o IP do proxy local (headers de IP não são confiados).
 Cursores de saída são offsets UTF-16 retornados pelo servidor; retenção é em bytes.

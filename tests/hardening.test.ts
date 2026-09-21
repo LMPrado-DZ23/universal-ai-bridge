@@ -108,3 +108,18 @@ it('revoke persists and removes duplicate env token definitions',()=>{
  const tokens=new TokenStore('old',p);tokens.rotate();expect(readFileSync(p,'utf8').match(/BRIDGE_TOKEN/g)).toHaveLength(1);
  tokens.revoke();expect(tokens.persistence).toBe('persisted');expect(readFileSync(p,'utf8')).toContain('BRIDGE_TOKEN=\n');expect(tokens.matches('old')).toBe(false);
 });
+
+it('PDF subprocess abort releases global quota before returning', async () => {
+  const controller = new AbortController();
+  const task = {kind:'document', format:'pdf', path:join(dir(),'missing.pdf'), maxBytes:2000000};
+  const work = isolated(task, 5000, controller.signal);
+  const assertion = expect(work).rejects.toThrow(/encerrada/);
+  controller.abort();
+  await assertion;
+  // Every completed child must release capacity, even when it fails before parsing.
+  for(let i=0;i<5;i++) await expect(isolated(task)).rejects.toThrow(/parsing de PDF/);
+});
+it('PDF subprocess deadline terminates its process and settles', async () => {
+  const task = {kind:'document', format:'pdf', path:join(dir(),'missing.pdf'), maxBytes:2000000};
+  await expect(isolated(task, 1)).rejects.toThrow(/limite/);
+});
