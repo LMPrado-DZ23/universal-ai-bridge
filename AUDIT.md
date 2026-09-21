@@ -22,6 +22,13 @@ Base v0.7.0: `5c3b0504b483baa825449c60475226f3b5adbc76` (82 blobs conferidos em
 - A primeira nova rodada remota confirmou npm/npx reais no Windows corrigidos,
   mas detectou comparação case-sensitive no teste do caminho npm.CMD. O teste foi
   ajustado ao contrato de caminhos, mantendo a asserção contra o shim sem extensão.
+- Windows confirmou 206 testes, incluindo npm/npx, PTY, árvore de processos e
+  persistência privada. A DACL usa APIs .NET em Windows PowerShell, evitando
+  dependência de módulos herdados do PowerShell 7. O teste verifica a ACL real.
+- A regressão de upgrade detectou coerção de `$null` para caminho vazio em
+  File.Replace; corrigida com NullString para preservar substituição atômica.
+- PowerShell 5.1 revelou erro de parsing por UTF-8 sem BOM; scripts com texto
+  não ASCII agora têm BOM e check:source impede a regressão de codificação.
 
 ## Arquitetura e correções
 
@@ -66,7 +73,7 @@ Sem banco, contas multitenant ou frontend web. Painel local Windows em WinForms.
 ## Validação
 
 Resultados finais e referências de CI são registrados em `evidence/results.json`.
-A rodada local intermediária aprovou 203 testes em 25 arquivos. Os checks da PR
+O aceite local em checkout limpo aprovou 206 testes em 25 arquivos. Os checks da PR
 são a autoridade para o SHA remoto; falha intermediária não equivale a aprovação.
 
 Comandos de aceite: npm ci; npm run check:source; npm run build; npm run typecheck;

@@ -1,4 +1,4 @@
-# healthcheck.ps1 — verifica /health e, com -Mcp, faz o handshake MCP (initialize).
+﻿# healthcheck.ps1 — verifica /health e, com -Mcp, faz o handshake MCP (initialize).
 param(
   [int]$Port = 8787,
   [string]$DataDir = "",

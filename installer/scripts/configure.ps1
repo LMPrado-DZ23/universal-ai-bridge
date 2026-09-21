@@ -1,4 +1,4 @@
-# configure.ps1 — cria a pasta de dados, gera token seguro e escreve o .env.
+﻿# configure.ps1 — cria a pasta de dados, gera token seguro e escreve o .env.
 # Idempotente: preserva um token existente para não quebrar conectores já configurados.
 param(
   [Parameter(Mandatory = $true)][string]$DataDir,

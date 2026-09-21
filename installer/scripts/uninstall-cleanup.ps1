@@ -1,4 +1,4 @@
-# uninstall-cleanup.ps1 — chamado pelo desinstalador. Para tudo e remove a tarefa.
+﻿# uninstall-cleanup.ps1 — chamado pelo desinstalador. Para tudo e remove a tarefa.
 # NÃO apaga a pasta de dados do usuário (workspace/.env/audit) por padrão;
 # use -PurgeData para remover também.
 param([string]$DataDir = "", [switch]$PurgeData)

@@ -1,4 +1,4 @@
-# control.ps1 — Painel de controle (WinForms) do Universal AI Bridge.
+﻿# control.ps1 — Painel de controle (WinForms) do Universal AI Bridge.
 # Mostra status do bridge/túnel e os botões: Abrir ChatGPT, Copiar endpoint,
 # Parar acesso imediatamente, Desinstalar. Atualiza sozinho.
 param(

@@ -1,4 +1,4 @@
-# Local human approval. The secret stays on this computer, never copied to AI.
+﻿# Local human approval. The secret stays on this computer, never copied to AI.
 param([Parameter(Mandatory=$true)][string]$DataDir)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms

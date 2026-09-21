@@ -1,4 +1,4 @@
-# launcher.ps1 — inicia o bridge (HTTP loopback) e o túnel cloudflared,
+﻿# launcher.ps1 — inicia o bridge (HTTP loopback) e o túnel cloudflared,
 # e grava o endpoint atual em {DataDir}\state.json. Rodado pela Tarefa Agendada
 # no logon e também logo após a instalação.
 param(

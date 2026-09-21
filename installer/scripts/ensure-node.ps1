@@ -1,4 +1,4 @@
-# ensure-node.ps1 — garante Node.js 22.12+/24 instalado, verificando integridade do MSI
+﻿# ensure-node.ps1 — garante Node.js 22.12+/24 instalado, verificando integridade do MSI
 # (SHA-256 do SHASUMS256.txt oficial + assinatura Authenticode). Fail-closed.
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

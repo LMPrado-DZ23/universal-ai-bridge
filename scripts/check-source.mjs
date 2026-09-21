@@ -8,7 +8,11 @@ function walk(dir) {
     const p=join(dir,e.name);
     if(e.isDirectory())walk(p);
     else if(allowed.has(extname(p))) {
-      const text=new TextDecoder('utf-8',{fatal:true}).decode(readFileSync(p));
+      const bytes=readFileSync(p);
+      const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+      if(extname(p)==='.ps1' && /[^\x00-\x7f]/.test(text) && !bytes.subarray(0,3).equals(Buffer.from([0xef,0xbb,0xbf]))) {
+        throw new Error(`PowerShell 5.1 exige UTF-8 BOM para texto nao ASCII: ${p}`);
+      }
       if(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text))throw new Error(`Controle indevido: ${p}`);
       count++;
     }

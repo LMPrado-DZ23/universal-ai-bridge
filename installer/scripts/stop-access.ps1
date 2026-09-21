@@ -1,4 +1,4 @@
-# stop-access.ps1 — PARADA DE EMERGÊNCIA. Encerra bridge e túnel e desativa
+﻿# stop-access.ps1 — PARADA DE EMERGÊNCIA. Encerra bridge e túnel e desativa
 # o início automático. O acesso remoto cai imediatamente.
 param([string]$DataDir = "")
 $ErrorActionPreference = "Stop"
