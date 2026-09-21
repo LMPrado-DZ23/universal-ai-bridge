@@ -1,10 +1,9 @@
 ﻿# stop-access.ps1 — PARADA DE EMERGÊNCIA. Encerra bridge e túnel e desativa
 # o início automático. O acesso remoto cai imediatamente.
-param([string]$DataDir = "")
+param([string]$DataDir = "", [ValidatePattern("^UniversalAIBridge(?:-[A-Za-z0-9]+)?$")][string]$TaskName = "UniversalAIBridge")
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "private-state.ps1")
 
-$taskName = "UniversalAIBridge"
 
 # Desativa a tarefa de logon.
 Disable-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Out-Null

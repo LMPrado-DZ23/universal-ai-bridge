@@ -9,6 +9,7 @@ $data=Join-Path $temp 'User Data'
 $app=Join-Path $install 'app'
 $link=Join-Path $app 'node_modules'
 $owned=@()
+$testTask='UniversalAIBridge-'+[guid]::NewGuid().ToString('N')
 function Free-Port {
   $socket=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
   $socket.Start()
@@ -16,6 +17,7 @@ function Free-Port {
 }
 function Invoke-Installed([string]$Script,[string[]]$Arguments=@(),[switch]$ExpectFailure) {
   $file=Join-Path $install ('scripts/'+$Script)
+  if($Script -in @('stop-access.ps1','uninstall-cleanup.ps1')){$Arguments+=@('-TaskName',$testTask)}
   $out=Join-Path $temp 'child.stdout';$err=Join-Path $temp 'child.stderr'
   $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$file+'"'))+$Arguments
   $p=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
