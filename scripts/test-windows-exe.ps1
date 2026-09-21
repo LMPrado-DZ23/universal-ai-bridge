@@ -13,6 +13,22 @@ function Run-Exe([string]$File,[string[]]$Arguments,[string]$Phase,[int]$Expecte
   $p=Start-Process -FilePath $File -ArgumentList $Arguments -PassThru
   $null=$p.Handle
   if(-not $p.WaitForExit(180000)){$p.Kill();throw "EXE timeout: $Phase"}
+  # Inno's uninstaller can hand off to a temporary child. Wait for its log writer.
+  $logArg=$Arguments | Where-Object {$_ -like '/LOG=*'} | Select-Object -First 1
+  if($logArg) {
+    $logPath=$logArg.Substring(5).Trim('"')
+    $deadline=[DateTime]::UtcNow.AddSeconds(15)
+    do {
+      try {
+        $handle=[IO.File]::Open($logPath,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+        $handle.Dispose()
+        break
+      } catch {
+        if([DateTime]::UtcNow -ge $deadline){throw "Inno log did not close: $Phase"}
+        Start-Sleep -Milliseconds 200
+      }
+    } while($true)
+  }
   if($p.ExitCode -ne $ExpectedExitCode){throw "EXE failed: $Phase (exit $($p.ExitCode))."}
 }
 $completed=@()
@@ -50,6 +66,9 @@ try {
   $completed+='unhealthy installation returns exit 10'
   $uninstaller=(Get-ChildItem $install -Filter 'unins*.exe' | Select-Object -First 1).FullName
   Run-Exe $uninstaller @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+(Join-Path $evidence 'exe-cleanup.log')+'"')) 'failed install cleanup'
+  if(Get-ScheduledTask -TaskName 'UniversalAIBridge' -ErrorAction SilentlyContinue){throw 'Failed-install cleanup left scheduled task.'}
+  if(Test-Path (Join-Path $install 'app/dist/index.js')){throw 'Failed-install cleanup left application.'}
+  if([IO.File]::ReadAllText($config) -cne $revoked -or [IO.File]::ReadAllText($marker) -cne 'user data survives'){throw 'Failed-install cleanup changed user data.'}
   Write-Output 'PASS: actual EXE install, authenticated MCP, limited task, upgrade, uninstall and preserved user data.'
  } finally {
   $taskInfo=Get-ScheduledTaskInfo -TaskName 'UniversalAIBridge' -ErrorAction SilentlyContinue

@@ -151,3 +151,34 @@ continua para purga. O painel verifica o código da parada, limpa endpoint obsol
 e não afirma ter copiado um endpoint ausente. Homologação visual segue pendente.
 A CI tem prazos de execução e cancela previews anteriores da mesma branch em job
 separado com permissão Actions; o job que instala dependências continua read-only.
+
+
+## Continuação: instalador EXE real no Windows
+
+O workflow passou a executar o EXE compilado em runner Windows descartável,
+com instalação silenciosa em caminho com espaços, MCP autenticado, tarefa
+Interactive/Limited, upgrade e desinstalação preservando configuração/workspace.
+O teste adicional reinstala com token revogado e exige código de saída 10.
+Os logs sanitizados e resultados ficam no artefato `windows-exe-validation`.
+
+A primeira execução real (35585271885) expôs uma corrida entre o início da
+tarefa agendada e o healthcheck. A exceção de pós-instalação do Inno ainda
+devolvia sucesso. A rodada 35585943467 confirmou a tarefa em execução e o
+novo código 10. O instalador agora aguarda até 45 segundos pela saúde;
+somente um handshake MCP válido libera o resultado de sucesso. Esse limite
+não representa rollback transacional; uma falha conserva dados para diagnóstico.
+
+Novas instalações usam conexão local por padrão, sem baixar ou iniciar túnel.
+Acesso remoto exige escolha explícita; upgrades preservam a configuração
+existente, inclusive o comportamento legado quando a chave não existe.
+
+Esta automação não valida cliques no wizard, UAC, WinForms, reinicialização/logon,
+máquina sem Node pré-instalado, assinatura positiva ou clientes Cloudflare.
+O DESKTOP-PRADO estava offline na consulta desta sessão. Homologação interativa
+e distribuição permanecem pendentes. Nenhum merge, tag ou release foi feito.
+
+
+A rodada 35586371762 passou nas asserções funcionais do EXE, incluindo revogação,
+mas falhou ao ler um log ainda aberto pelo processo temporário do desinstalador.
+O teste agora aguarda a liberação exclusiva do log por até 15 segundos e confere
+também a limpeza da reinstalação rejeitada; erro de coleta continua bloqueando CI.

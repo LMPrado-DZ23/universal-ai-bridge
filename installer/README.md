@@ -64,3 +64,14 @@ Windows interativa ainda é necessária para homologar WinForms e o ciclo do wiz
 
 Para uso pelo código-fonte, siga o README raiz e `npm run doctor`. O HTTP MCP não
 implica suporte automático a headers personalizados em ChatGPT/Claude web.
+
+
+### Ciclo do EXE em CI
+
+`scripts/test-windows-exe.ps1` instala o EXE real silenciosamente em Windows,
+confere MCP autenticado e tarefa com privilégio limitado, atualiza e desinstala,
+preservando dados. Também exige falha explícita ao reinstalar com token revogado.
+Os resultados e logs sanitizados são publicados em `windows-exe-validation`.
+A pós-instalação espera a partida da tarefa por até 45 segundos; falha de saúde
+ou autenticação produz código 10. Dados e instalação parcial podem permanecer
+para diagnóstico. Isso não substitui validação interativa do wizard/UAC/WinForms.

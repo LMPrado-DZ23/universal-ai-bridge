@@ -1,3 +1,10 @@
+## Validação adicional do EXE Windows
+
+- Instalação local por padrão; túnel remoto exige escolha explícita.
+- Teste do EXE real: instalação, MCP, upgrade, desinstalação e revogação.
+- Aguarda inicialização da tarefa e sinaliza falha de pós-instalação com código 10.
+- Preserva configuração existente e dados do usuário.
+
 # Revisão sobre 0.7.0 — PR #1, sem nova release
 
 - Corrige seleção de shims POSIX no Windows; npm/npx usam batch validado, mantendo shell:false.
