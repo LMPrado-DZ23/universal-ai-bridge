@@ -1,7 +1,15 @@
 # Pinned release and checksum from https://github.com/cloudflare/cloudflared/releases/tag/2025.8.1
-param([Parameter(Mandatory=$true)][string]$InstallDir, [ValidateSet('2025.8.1')][string]$Version='2025.8.1')
+param([Parameter(Mandatory=$true)][string]$InstallDir, [ValidateSet('2025.8.1')][string]$Version='2025.8.1', [string]$DataDir='')
 $ErrorActionPreference='Stop'
 [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+if($DataDir) {
+  $line=Select-String -LiteralPath (Join-Path $DataDir '.env') -Pattern '^BRIDGE_CONNECTION=(.*)$' | Select-Object -First 1
+  if($line) {
+    $connection=$line.Matches[0].Groups[1].Value.Trim()
+    if($connection -eq 'local'){Write-Output 'Modo local: tunel nao solicitado.';return}
+    if($connection -ne 'remote'){throw 'Modo de conexao invalido.'}
+  }
+}
 $expected='b5d598b00cc3a28cabc5812d9f762819334614bae452db4e7f23eefe7b081556'
 $bin=Join-Path $InstallDir 'bin'
 New-Item -ItemType Directory -Force -Path $bin | Out-Null

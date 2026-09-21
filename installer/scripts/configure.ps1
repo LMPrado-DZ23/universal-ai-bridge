@@ -4,7 +4,8 @@ param(
   [Parameter(Mandatory = $true)][string]$DataDir,
   [ValidateSet("safe", "admin")][string]$Mode = "safe",
   [string]$Ack = "",
-  [int]$Port = 8787
+  [int]$Port = 8787,
+  [ValidateSet("local", "remote")][string]$Connection = "local"
 )
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "private-state.ps1")
@@ -52,6 +53,7 @@ if ([string]::IsNullOrWhiteSpace($adminSecret)) {
 }
 
 $content = @"
+BRIDGE_CONNECTION=$Connection
 BRIDGE_MODE=$Mode
 BRIDGE_ADMIN_ACK=$Ack
 BRIDGE_TOKEN=$token
@@ -74,6 +76,7 @@ if (Test-Path $envFile) {
   if($PSBoundParameters.ContainsKey('Mode')) {
     $updates.BRIDGE_MODE=$Mode; $updates.BRIDGE_ADMIN_ACK=$Ack; $updates.BRIDGE_ALLOW_SHELL=$allowShell
   }
+  if($PSBoundParameters.ContainsKey('Connection')){$updates.BRIDGE_CONNECTION=$Connection}
   if($PSBoundParameters.ContainsKey('Port')){$updates.BRIDGE_PORT=[string]$Port}
   foreach($key in $updates.Keys) {
     $content=[regex]::Replace($content,"(?m)^$key=.*(?:\r?\n|$)",'')

@@ -85,6 +85,17 @@ jobs:
           if (-not (Test-Path $compiler)) { throw 'Runner has no Inno Setup compiler.' }
           & $compiler 'installer\UniversalAI-Bridge.iss'
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'installer\Output\UniversalAI-Bridge-Setup.exe')) { throw 'Installer compilation failed.' }
+      - name: Actual EXE installation lifecycle
+        shell: powershell
+        timeout-minutes: 10
+        run: ./scripts/test-windows-exe.ps1
+      - name: Upload EXE validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-exe-validation
+          path: validation-artifacts/exe-*
+          if-no-files-found: ignore
       - name: Sign production installer
         env:
           CODE_SIGN_PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}

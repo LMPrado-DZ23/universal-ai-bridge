@@ -55,12 +55,19 @@ Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\s
 
 [Code]
 var
+  ConnectionPage: TInputOptionWizardPage;
   ModePage: TInputOptionWizardPage;
   AckPage: TInputQueryWizardPage;
 
 procedure InitializeWizard;
 begin
-  ModePage := CreateInputOptionPage(wpSelectDir,
+  ConnectionPage := CreateInputOptionPage(wpSelectDir,
+    'Conexao da IA', 'Escolha onde o bridge pode ser acessado.',
+    'Local funciona sem tunel. Remoto publica uma URL HTTPS e exige configuracao do cliente e token.', True, False);
+  ConnectionPage.Add('Somente neste computador (recomendado).');
+  ConnectionPage.Add('Acesso remoto por tunel Cloudflare (opt-in).');
+  ConnectionPage.SelectedValueIndex := 0;
+  ModePage := CreateInputOptionPage(ConnectionPage.ID,
     'Modo de operação',
     'Escolha quanto acesso a IA terá ao seu computador.',
     'O modo seguro é recomendado. Você pode mudar depois editando o arquivo .env.',
@@ -105,6 +112,11 @@ begin
   end;
 end;
 
+function GetConnection(): String;
+begin
+  if ConnectionPage.SelectedValueIndex = 1 then Result := 'remote' else Result := 'local';
+end;
+
 function GetMode(): String;
 begin
   if IsAdminMode() then Result := 'admin' else Result := 'safe';
@@ -145,14 +157,16 @@ begin
 
     // 1) Runtime.
     RunPS('ensure-node.ps1', '', True);
-    RunPS('ensure-cloudflared.ps1', '-InstallDir "' + App + '"', True);
+
 
     // 2) Configuração (token + modo).
     if FileExists(DataDir + '\.env') then
       RunPS('configure.ps1', '-DataDir "' + DataDir + '"', True)
     else
       RunPS('configure.ps1', '-DataDir "' + DataDir + '" -Mode ' + GetMode() +
-        ' -Ack "' + GetAck() + '" -Port 8787', True);
+        ' -Ack "' + GetAck() + '" -Port 8787 -Connection ' + GetConnection(), True);
+
+    RunPS('ensure-cloudflared.ps1', '-InstallDir "' + App + '" -DataDir "' + DataDir + '"', True);
 
     // 3) Início automático + iniciar agora (roda como usuário).
     RunPS('install-task.ps1', '-InstallDir "' + App + '" -DataDir "' + DataDir + '" -RunNow', True);

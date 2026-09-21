@@ -17,6 +17,9 @@ function Get-EnvValue([string]$key) {
   if ($m) { return $m.Matches[0].Groups[1].Value.Trim() }
   return ""
 }
+$connection=Get-EnvValue 'BRIDGE_CONNECTION'
+if($connection -and $connection -notin @('local','remote')){throw 'Modo de conexao invalido.'}
+if($connection -eq 'local'){$NoTunnel=$true}
 $port = Get-EnvValue "BRIDGE_PORT"; if (-not $port) { $port = "8787" }
 $mode = Get-EnvValue "BRIDGE_MODE"; if (-not $mode) { $mode = "safe" }
 $tunnelToken = Get-EnvValue "CLOUDFLARE_TUNNEL_TOKEN"
