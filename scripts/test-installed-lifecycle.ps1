@@ -19,6 +19,8 @@ function Invoke-Installed([string]$Script,[string[]]$Arguments=@(),[switch]$Expe
   $out=Join-Path $temp 'child.stdout';$err=Join-Path $temp 'child.stderr'
   $args=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$file+'"'))+$Arguments
   $p=Start-Process powershell.exe -ArgumentList $args -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
+  # Retain the native handle before Windows PowerShell refreshes an exited process.
+  $null=$p.Handle
   # Wait only for the script, not the long-lived bridge it starts.
   if(-not $p.WaitForExit(30000)){$p.Kill();throw "Installed script timed out: $Script"}
   if($ExpectFailure) {if($p.ExitCode -eq 0){throw "Expected rejection: $Script"}}

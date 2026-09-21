@@ -33,7 +33,7 @@ jobs:
           $base="$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY/actions"
           $runs=Invoke-RestMethod -Uri "$base/workflows/installer.yml/runs?per_page=30" -Headers $headers
           foreach($run in $runs.workflow_runs) {
-            if($run.id -ne $env:GITHUB_RUN_ID -and $run.head_branch -eq $env:PREVIEW_BRANCH -and $run.event -eq 'pull_request' -and $run.status -in @('queued','in_progress','waiting','pending')) {
+            if($run.run_number -lt [long]$env:GITHUB_RUN_NUMBER -and $run.head_branch -eq $env:PREVIEW_BRANCH -and $run.event -eq 'pull_request' -and $run.status -in @('queued','in_progress','waiting','pending')) {
               try {Invoke-RestMethod -Method Post -Uri "$base/runs/$($run.id)/cancel" -Headers $headers | Out-Null}
               catch {if([int]$_.Exception.Response.StatusCode -ne 409){throw 'Unable to cancel obsolete preview.'}}
             }
@@ -59,6 +59,10 @@ jobs:
       - run: npm run check:source
       - run: npm run build
       - run: npm run typecheck
+      - name: Installed Windows lifecycle
+        shell: powershell
+        timeout-minutes: 3
+        run: ./scripts/test-installed-lifecycle.ps1
       - name: Windows private persistence regression
         run: npx vitest run tests/persistence-regression.test.ts
       - run: npm test
@@ -70,10 +74,6 @@ jobs:
       - name: Windows PowerShell 5.1 installer checks
         shell: powershell
         run: ./scripts/test-installer.ps1
-      - name: Installed Windows lifecycle
-        shell: powershell
-        timeout-minutes: 3
-        run: ./scripts/test-installed-lifecycle.ps1
       - name: Generate SBOM
         shell: pwsh
         run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
